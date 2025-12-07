@@ -479,24 +479,22 @@ static Vector2 spo_curve_plot(const Axes *const axes, Vector2 pt)
     };
 }
 
-Obj spo_curve(Id axes_id)
+Obj spo_curve(Id axes_id, UmkaCurvePts u_pts)
 {
-    Obj axes_obj = ctx.objs.items[axes_id];
-    SP_ASSERT(axes_obj.kind == OK_AXES);
-    const Axes *axes = &axes_obj.as.axes;
+    Obj *axes_obj = NULL;
+    spc_get_obj(axes_id, &axes_obj);
+    SP_ASSERT(axes_obj->kind == OK_AXES);
+    const Axes *axes = &axes_obj->as.axes;
 
     PointList pts = {0};
-    int n = 350;
-    f64 dx = (axes->xmax - axes->xmin) / (f32)n;
     Vector2 p = {0};
-    for (f64 x = axes->xmin; x <= axes->xmax; x += dx) {
-        p = (Vector2){x, x*x - 1.f};
+    int n = umkaGetDynArrayLen(&u_pts);
+    printf("Curve data len: %d\n", n);
+    for (int i = 0; i < n; i++) {
+        p = spv_dtof(u_pts.data[i]);
         p = spo_curve_plot(axes, p);
         arena_da_append(&arena, &pts, p);
     }
-    // NOTE: Padding final value for catmull-rom spline rendering is required
-    // to ensure that the final point gets rendered
-    arena_da_append(&arena, &pts, p);
 
     return (Obj) {
         .id = spc_next_id(),
@@ -627,7 +625,18 @@ void spo_render(Obj obj)
 
         case OK_CURVE: {
             Curve c = obj.as.curve;
-            DrawSplineCatmullRom(c.pts.items, c.pts.count, 4.f, c.color);
+            SP_ASSERT(c.pts.count >= 2);
+            f32 thickness = 3.0f;
+
+            for (int i = 1; i < c.pts.count; i++) {
+                Vector2 start = c.pts.items[i-1];
+                Vector2 end = c.pts.items[i];
+
+                DrawLineEx(start, end, thickness, c.color);
+                DrawCircleV(start, thickness / 2.0f, c.color);
+            }
+            // Cap the last point with a circle
+            DrawCircleV(c.pts.items[c.pts.count - 1], thickness / 2.0f, c.color);
         } break;
 
         case OK_TYPST: {
@@ -788,8 +797,9 @@ void spuo_axes(UmkaStackSlot *p, UmkaStackSlot *r)
 void spuo_curve(UmkaStackSlot *p, UmkaStackSlot *r)
 {
     Id axes_id = *(Id *)umkaGetParam(p, 0);
+    UmkaCurvePts umka_pts = *(UmkaCurvePts *)umkaGetParam(p, 1);
 
-    Obj curve = spo_curve(axes_id);
+    Obj curve = spo_curve(axes_id, umka_pts);
     umkaGetResult(p, r)->intVal = curve.id;
 
     arena_da_append(&arena, &ctx.objs, curve);

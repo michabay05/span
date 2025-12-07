@@ -1,11 +1,9 @@
 fn sequence(): void {
-    t := typst("1/20 sin(2theta) = 1/10sin(theta)cos(theta)")
-    fade_in(t);
-    play(0.5);
+    ax := axes();
+    c := plot_curve(ax, fn(x: real): real {
+        return 2 * sin(x * std::pi);
+    }, 120)
 
-    wait();
-    play(1.5);
-
-    move(t, Vec2{0,-4});
-    play(0.5);
+    enable(ax);
+    enable(c);
 }

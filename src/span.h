@@ -117,6 +117,8 @@ typedef struct {
     Color color;
 } Curve;
 
+typedef UmkaDynArray(DVector2) UmkaCurvePts;
+
 typedef struct {
     const char *text;
     f32 font_size;
