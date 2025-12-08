@@ -6,7 +6,7 @@ type Id = int16;
 
 fn rect(pos: Vec2 = Vec2{0, 0}, size: Vec2 = Vec2{1, 1},
     color: Color = Color{255, 255, 255, 255}): Id;
-fn text(s: str, pos: Vec2 = Vec2{0, 0}, font_size: real32 = 25.0,
+fn text(s: str, pos: Vec2 = Vec2{0, 0}, font_size: real32 = 1.0,
     color: Color = Color{255, 255, 255, 255}): Id;
 
 fn axes(center: Vec2 = Vec2{0, 0}, xmin: real = -3.0, xmax: real = 3.0,
@@ -23,7 +23,7 @@ fn plot_curve(axes_id: Id, func: fn(x: real): real, samples: int32 = 75): Id {
     return curve(axes_id, pts);
 }
 
-fn typst(s: str, font_size: real = 25.0, pos: Vec2 = Vec2{0, 0},
+fn typst(s: str, font_size: real = 1.0, pos: Vec2 = Vec2{0, 0},
     color: Color = Color{255, 255, 255, 255}): Id;
 
 fn fade_in(id: Id, delay: real = 0.0): void;

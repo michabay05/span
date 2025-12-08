@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 #include "span.h"
 #include "ffmpeg.h"
 #include "raylib.h"
@@ -87,17 +88,34 @@ void spc_renderer_init(RenderMode mode)
     ctx.fps = 60;
     SetTargetFPS(ctx.fps);
 
+    ctx.min_side_divisions = 10;
     switch (mode) {
         case RM_Preview: {
             ctx.vres = ctx.pres;
+
+            if (ctx.pres.x < ctx.pres.y) {
+                // The horz length is smaller (Portrait)
+                SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
+            } else {
+                // The vert length is smaller (Landscape)
+                ctx.scale_factor = (f32)ctx.pres.y / (f32)ctx.min_side_divisions;
+            }
         } break;
 
         case RM_Output: {
-            ctx.vres = (IVector2){ 1600, 1200 };
+            ctx.vres = (IVector2){ 1200, 900 };
             // NOTE: The aspect ratio of the preview window and video have to be the same.
             f32 p_aspect_ratio = (f32)ctx.pres.x / (f32)ctx.pres.y;
             f32 v_aspect_ratio = (f32)ctx.vres.x / (f32)ctx.vres.y;
             SP_ASSERT(p_aspect_ratio == v_aspect_ratio);
+
+            if (ctx.vres.x < ctx.vres.y) {
+                // The horz length is smaller (Portrait)
+                SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
+            } else {
+                // The vert length is smaller (Landscape)
+                ctx.scale_factor = (f32)ctx.vres.y / (f32)ctx.min_side_divisions;
+            }
 
             ctx.rtex = LoadRenderTexture(ctx.vres.x, ctx.vres.y);
             ctx.ffmpeg = ffmpeg_start_rendering_video(
@@ -105,7 +123,7 @@ void spc_renderer_init(RenderMode mode)
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown mode of render: %d", mode);
+            SP_UNREACHABLEF("Unknown render mode: %d", mode);
         } break;
     }
     ctx.render_mode = mode;
@@ -268,7 +286,7 @@ void spc_render(void)
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown mode of render: %d", ctx.render_mode);
+            SP_UNREACHABLEF("Unknown render mode: %d", ctx.render_mode);
         } break;
     }
 }
@@ -278,6 +296,26 @@ Id spc_next_id(void)
     Id id = ctx.id_counter;
     ctx.id_counter++;
     return id;
+}
+
+IVector2 spc_get_res(void)
+{
+    IVector2 res = {0};
+    switch (ctx.render_mode) {
+        case RM_Preview: {
+            res = ctx.pres;
+        } break;
+
+        case RM_Output: {
+            res = ctx.vres;
+        } break;
+
+        default: {
+            SP_UNREACHABLEF("Unknown render mode: %d", ctx.render_mode);
+        } break;
+    }
+
+    return res;
 }
 
 void spc_print_tasks(TaskList tl)
@@ -369,7 +407,7 @@ Obj spo_rect(DVector2 pos, DVector2 size, Color color)
     };
 }
 
-Obj spo_text(const char *str, DVector2 pos, f32 font_size, Color color)
+Obj spo_text(const char *str, DVector2 pos, f32 font_factor, Color color)
 {
     return (Obj) {
         .id = spc_next_id(),
@@ -379,7 +417,8 @@ Obj spo_text(const char *str, DVector2 pos, f32 font_size, Color color)
             .text = {
                 .str = arena_strdup(&arena, str),
                 .position = pos,
-                .font_size = font_size,
+                // NOTE: I arbitrarily divided this by 2.f...it looked nicer
+                .font_factor = font_factor / 2.f,
                 .color = color,
             }
         }
@@ -388,11 +427,15 @@ Obj spo_text(const char *str, DVector2 pos, f32 font_size, Color color)
 
 Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax)
 {
-    Vector2 size = {550.f, 550.f};
+    Vector2 size = {8, 8};
     Vector2 pos = Vector2Subtract(center, Vector2Scale(size, 0.5));
+
+    pos = Vector2Scale(pos, ctx.scale_factor);
+    size = Vector2Scale(size, ctx.scale_factor);
 
     Axes axes = {
         .xmin = xmin, .xmax = xmax, .ymin = ymin, .ymax = ymax,
+        // .xmin = xmin, .xmax = xmax, .ymin = ymin, .ymax = ymax,
         .box = (Rectangle){
             .x = pos.x,
             .y = pos.y,
@@ -400,18 +443,38 @@ Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax)
             .height = size.y,
         },
     };
+    // Coord of the center of the axes' box
     axes.center_coord = (Vector2) {
         .x = 0.5f * (axes.xmax + axes.xmin),
         .y = 0.5f * (axes.ymax + axes.ymin),
     };
+
     axes.coord_size = (Vector2) {
-        .x = axes.box.width / (int)(axes.xmax - axes.xmin),
-        .y = axes.box.height / (int)(axes.ymax - axes.ymin),
+        .x = axes.box.width / (axes.xmax - axes.xmin),
+        .y = axes.box.height / (axes.ymax - axes.ymin),
     };
-    axes.origin_pos = Vector2Multiply(
-        Vector2Subtract(center, axes.center_coord),
-        axes.coord_size
+    // axes.coord_size.y *= -1.f;
+
+    // Position of the center of the axes' box
+    Vector2 box_center = Vector2Scale(center, ctx.scale_factor);
+    // Vector2 box_center = {
+    //     .x = axes.box.x + 0.5f*axes.box.width,
+    //     .y = axes.box.y + 0.5f*axes.box.height,
+    // };
+
+    Vector2 flip = {1.f, -1.f};
+    axes.origin_pos = Vector2Add(
+        box_center,
+        Vector2Multiply(
+            Vector2Negate(axes.center_coord),
+            Vector2Multiply(axes.coord_size, flip)
+        )
     );
+
+    // axes.origin_pos = (Vector2) {
+    //     .x = box_center.x + axes.center_coord.x * axes.coord_size.x,
+    //     .x = box_center.x - axes.center_coord.x * axes.coord_size.x,
+    // };
 
     return (Obj){
         .id = spc_next_id(),
@@ -421,11 +484,52 @@ Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax)
     };
 }
 
-Obj spo_typst(const char *text, f32 font_size, DVector2 pos, Color color)
+static Vector2 spo_curve_plot(const Axes *const axes, Vector2 pt)
+{
+    SP_ASSERT(axes->xmin <= axes->xmax);
+
+    pt.y *= -1.f;
+    Vector2 new_pt = Vector2Add(
+        axes->origin_pos,
+        Vector2Multiply(pt, axes->coord_size)
+    );
+    return new_pt;
+}
+
+Obj spo_curve(Id axes_id, UmkaCurvePts u_pts)
+{
+    Obj *axes_obj = NULL;
+    spc_get_obj(axes_id, &axes_obj);
+    SP_ASSERT(axes_obj->kind == OK_AXES);
+    const Axes *axes = &axes_obj->as.axes;
+
+    PointList pts = {0};
+    int n = umkaGetDynArrayLen(&u_pts);
+    for (int i = 0; i < n; i++) {
+        Vector2 pt = spo_curve_plot(axes, spv_dtof(u_pts.data[i]));
+        arena_da_append(&arena, &pts, pt);
+    }
+
+    return (Obj) {
+        .id = spc_next_id(),
+        .enabled = false,
+        .kind = OK_CURVE,
+        .as = {
+            .curve = {
+                .axes_id = axes_id,
+                .pts = pts,
+                .color = BLUE,
+            }
+        }
+    };
+}
+
+Obj spo_typst(const char *text, f32 font_factor, DVector2 pos, Color color)
 {
     Typst typ = {
         .text = text,
-        .font_size = font_size,
+        // NOTE: I arbitrarily divided this by 42.5f...it looked nicer
+        .font_factor = font_factor / 42.5f,
         .position = pos,
         .color = color,
     };
@@ -447,10 +551,11 @@ bool spo_typst_compile(Typst *typ)
     }
 
     Nob_String_Builder sb = {0};
+    f32 font_size = typ->font_factor * ctx.scale_factor;
     nob_sb_appendf(&sb,
         "#set page(width: auto, height: auto, margin: 0in, fill: none)\n"
         "#set text(size: %fpt, fill: white)\n"
-        "$ %s $\n", typ->font_size , typ->text);
+        "$ %s $\n", font_size, typ->text);
 
     bool ok = nob_write_entire_file("input.typ", sb.items, sb.count);
     if (!ok) return false;
@@ -467,47 +572,6 @@ bool spo_typst_compile(Typst *typ)
     typ->texture = LoadTexture(output_path);
     SetTextureFilter(typ->texture, TEXTURE_FILTER_BILINEAR);
     return true;
-}
-
-static Vector2 spo_curve_plot(const Axes *const axes, Vector2 pt)
-{
-    SP_ASSERT(axes->xmin <= axes->xmax);
-
-    return (Vector2) {
-        axes->origin_pos.x + ((pt.x / (axes->xmax - axes->xmin)) * axes->box.width),
-        (axes->origin_pos.y + ((pt.y / (axes->ymax - axes->ymin)) * axes->box.height)) * -1.f
-    };
-}
-
-Obj spo_curve(Id axes_id, UmkaCurvePts u_pts)
-{
-    Obj *axes_obj = NULL;
-    spc_get_obj(axes_id, &axes_obj);
-    SP_ASSERT(axes_obj->kind == OK_AXES);
-    const Axes *axes = &axes_obj->as.axes;
-
-    PointList pts = {0};
-    Vector2 p = {0};
-    int n = umkaGetDynArrayLen(&u_pts);
-    printf("Curve data len: %d\n", n);
-    for (int i = 0; i < n; i++) {
-        p = spv_dtof(u_pts.data[i]);
-        p = spo_curve_plot(axes, p);
-        arena_da_append(&arena, &pts, p);
-    }
-
-    return (Obj) {
-        .id = spc_next_id(),
-        .enabled = false,
-        .kind = OK_CURVE,
-        .as = {
-            .curve = {
-                .axes_id = axes_id,
-                .pts = pts,
-                .color = BLUE,
-            }
-        }
-    };
 }
 
 void spo_get_pos(Obj *obj, DVector2 **pos)
@@ -552,20 +616,6 @@ void spo_get_color(Obj *obj, Color **color)
     }
 }
 
-// NOTE: This is only used for the font value for now
-static f32 spv__adjusted_value(f32 f)
-{
-    return (f / (f32)ctx.pres.y) * ctx.vres.y;
-}
-
-static Vector2 spv__adjusted_coords(Vector2 v)
-{
-    return Vector2Multiply(
-        Vector2Divide(v, spv_itof(ctx.pres)),
-        spv_itof(ctx.vres)
-    );
-}
-
 void spo_render(Obj obj)
 {
     if (!obj.enabled) return;
@@ -573,14 +623,11 @@ void spo_render(Obj obj)
     switch (obj.kind) {
         case OK_RECT: {
             Rect r = obj.as.rect;
-            Vector2 pos = Vector2Scale(spv_dtof(r.position), UNIT_TO_PX);
-            Vector2 size = Vector2Scale(spv_dtof(r.size), UNIT_TO_PX);
+            Vector2 pos = Vector2Scale(spv_dtof(r.position), ctx.scale_factor);
+            Vector2 size = Vector2Scale(spv_dtof(r.size), ctx.scale_factor);
             pos = Vector2Subtract(pos, Vector2Scale(size, 0.5));
 
-            DrawRectangleV(
-                spv__adjusted_coords(pos),
-                spv__adjusted_coords(size),
-                r.color);
+            DrawRectangleV(pos, size, r.color);
         } break;
 
         case OK_TEXT: {
@@ -588,53 +635,56 @@ void spo_render(Obj obj)
             Font font = GetFontDefault();
             f32 spacing = 2.0f;
 
-            Vector2 pos = Vector2Scale(spv_dtof(t.position), UNIT_TO_PX);
-            f32 font_size = t.font_size;
+            Vector2 pos = Vector2Scale(spv_dtof(t.position), ctx.scale_factor);
+            f32 font_size = t.font_factor * ctx.scale_factor;
             Vector2 text_dim = MeasureTextEx(font, t.str, font_size, spacing);
             pos = Vector2Subtract(pos, Vector2Scale(text_dim, 0.5));
 
-            DrawTextEx(
-                font, t.str,
-                spv__adjusted_coords(pos),
-                spv__adjusted_value(font_size),
-                spv__adjusted_value(spacing),
-                t.color);
+            DrawTextEx(font, t.str, pos, font_size, spacing, t.color);
         } break;
 
         case OK_AXES: {
             const Axes *axes = &obj.as.axes;
             Vector2 start, end;
+            Color axes_color = WHITE;
             f32 thickness = 2.f;
-            // NOTE: Boundary rectangle - render only for debug purposes
-            // DrawRectangleLinesEx(axes->box, 2.f, LIGHTGRAY);
+            // // NOTE: Boundary rectangle - render only for debug purposes
+            // DrawRectangleLinesEx(axes->box, 2.f, RED);
 
             if (axes->xmin <= 0.f && 0.f <= axes->xmax) {
                 // Vertical axis
                 start = (Vector2){axes->origin_pos.x, axes->box.y};
                 end = (Vector2){axes->origin_pos.x, axes->box.y + axes->box.height};
-                DrawLineEx(start, end, thickness, RED);
+                // start = Vector2Scale(start, ctx.scale_factor);
+                // end = Vector2Scale(end, ctx.scale_factor);
+                DrawLineEx(start, end, thickness, axes_color);
             }
 
             if (axes->ymin <= 0.f && 0.f <= axes->ymax) {
                 // Horizontal axis
-                start = (Vector2) {axes->box.x, -axes->origin_pos.y};
-                end = (Vector2) {axes->box.x + axes->box.width, -axes->origin_pos.y};
-                DrawLineEx(start, end, thickness, RED);
+                start = (Vector2) {axes->box.x, axes->origin_pos.y};
+                end = (Vector2) {axes->box.x + axes->box.width, axes->origin_pos.y};
+                // start = Vector2Scale(start, ctx.scale_factor);
+                // end = Vector2Scale(end, ctx.scale_factor);
+                DrawLineEx(start, end, thickness, axes_color);
             }
         } break;
 
         case OK_CURVE: {
             Curve c = obj.as.curve;
             SP_ASSERT(c.pts.count >= 2);
-            f32 thickness = 3.0f;
+            f32 thickness = 4.f;
 
             for (int i = 1; i < c.pts.count; i++) {
                 Vector2 start = c.pts.items[i-1];
                 Vector2 end = c.pts.items[i];
 
+                // Line between two data points
                 DrawLineEx(start, end, thickness, c.color);
+                // Cap the first point to hide weird line artifacts
                 DrawCircleV(start, thickness / 2.0f, c.color);
             }
+
             // Cap the last point with a circle
             DrawCircleV(c.pts.items[c.pts.count - 1], thickness / 2.0f, c.color);
         } break;
@@ -643,7 +693,7 @@ void spo_render(Obj obj)
             Typst t = obj.as.typst;
             IVector2 tex_dim = {t.texture.width, t.texture.height};
             Vector2 pos = Vector2Subtract(
-                Vector2Scale(spv_dtof(t.position), UNIT_TO_PX),
+                Vector2Scale(spv_dtof(t.position), ctx.scale_factor),
                 Vector2Scale(spv_itof(tex_dim), 0.5));
             DrawTextureV(t.texture, pos, t.color);
         } break;

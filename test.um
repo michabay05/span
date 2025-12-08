@@ -1,9 +1,10 @@
 fn sequence(): void {
-    ax := axes();
-    c := plot_curve(ax, fn(x: real): real {
-        return 2 * sin(x * std::pi);
-    }, 120)
-
-    enable(ax);
+    a := axes(Vec2{0, -0.8});
+    c := plot_curve(a, fn(x: real): real {
+        return cos(std::pi*x);
+    }, 120);
+    t := typst("sin(x) = cos(x - pi/2)", 15, Vec2{0, 4});
+    enable(a);
     enable(c);
+    enable(t);
 }

@@ -94,7 +94,11 @@ typedef struct {
     const char *str;
     DVector2 position;
     Vector2 norm_coords;
-    f32 font_size;
+    // NOTE: Instead of storing what font size is in absolute terms (aka. in px),
+    // the font size is described in terms of a multiplier. In other words, font
+    // factor stores how many divisions tall the font is. Then, when rendering it
+    // will be multiplied by the scale factor to obtain the absolute size.
+    f32 font_factor;
     Color color;
 } Text;
 
@@ -121,7 +125,7 @@ typedef UmkaDynArray(DVector2) UmkaCurvePts;
 
 typedef struct {
     const char *text;
-    f32 font_size;
+    f32 font_factor;
     DVector2 position;
     Color color;
     Texture texture;
@@ -177,6 +181,9 @@ typedef struct {
 
     // NOTE: preview window resolution, output video resolution
     IVector2 pres, vres;
+    int min_side_divisions;
+    f32 scale_factor;
+
     Camera2D cam;
     int fps;
     RenderMode render_mode;
@@ -188,7 +195,7 @@ typedef struct {
     FFMPEG *ffmpeg;
 } Context;
 
-#define UNIT_TO_PX 50
+#define __UNIT_TO_PX 50
 #define SCENE_OBJ ((Id)-1)
 
 extern Arena arena;
