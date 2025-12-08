@@ -7,7 +7,11 @@
 int main(void)
 {
     const char *filename = "./test.um";
+#if 0
+    bool success = spc_init(filename, RM_Preview);
+#else
     bool success = spc_init(filename, RM_Output);
+#endif
     if (!success) return 1;
 
     while (!ctx.quit && !WindowShouldClose()) {

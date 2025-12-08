@@ -1,6 +1,10 @@
 fn sequence(): void {
-    r := rect();
-    t := text("What is up ma boi???", Vec2{0, 3});
-    enable(r);
+    a := axes(Vec2{0, -0.8});
+    c := plot_curve(a, fn(x: real): real {
+        return cos(std::pi*x);
+    }, 120);
+    t := typst("sin(x) = cos(x - pi/2)", 15, Vec2{0, 4});
+    enable(a);
+    enable(c);
     enable(t);
 }

@@ -125,7 +125,7 @@ typedef UmkaDynArray(DVector2) UmkaCurvePts;
 
 typedef struct {
     const char *text;
-    f32 font_size;
+    f32 font_factor;
     DVector2 position;
     Color color;
     Texture texture;
