@@ -397,7 +397,7 @@ Obj spo_text(const char *str, DVector2 pos, f32 font_size, Color color)
             .text = {
                 .str = arena_strdup(&arena, str),
                 .position = pos,
-                .font_factor = font_size / (f32)ctx.min_side_divisions,
+                .font_factor = font_size / 2.f,
                 .color = color,
             }
         }
