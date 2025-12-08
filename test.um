@@ -1,9 +1,6 @@
 fn sequence(): void {
-    ax := axes();
-    c := plot_curve(ax, fn(x: real): real {
-        return 2 * sin(x * std::pi);
-    }, 120)
-
-    enable(ax);
-    enable(c);
+    r := rect();
+    t := text("What is up ma boi???", Vec2{0, 3});
+    enable(r);
+    enable(t);
 }

@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 #include "span.h"
 #include "ffmpeg.h"
 #include "raylib.h"
@@ -87,17 +88,34 @@ void spc_renderer_init(RenderMode mode)
     ctx.fps = 60;
     SetTargetFPS(ctx.fps);
 
+    ctx.min_side_divisions = 10;
     switch (mode) {
         case RM_Preview: {
             ctx.vres = ctx.pres;
+
+            if (ctx.pres.x < ctx.pres.y) {
+                // The horz length is smaller (Portrait)
+                SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
+            } else {
+                // The vert length is smaller (Landscape)
+                ctx.scale_factor = (f32)ctx.pres.y / (f32)ctx.min_side_divisions;
+            }
         } break;
 
         case RM_Output: {
-            ctx.vres = (IVector2){ 1600, 1200 };
+            ctx.vres = (IVector2){ 1200, 900 };
             // NOTE: The aspect ratio of the preview window and video have to be the same.
             f32 p_aspect_ratio = (f32)ctx.pres.x / (f32)ctx.pres.y;
             f32 v_aspect_ratio = (f32)ctx.vres.x / (f32)ctx.vres.y;
             SP_ASSERT(p_aspect_ratio == v_aspect_ratio);
+
+            if (ctx.vres.x < ctx.vres.y) {
+                // The horz length is smaller (Portrait)
+                SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
+            } else {
+                // The vert length is smaller (Landscape)
+                ctx.scale_factor = (f32)ctx.vres.y / (f32)ctx.min_side_divisions;
+            }
 
             ctx.rtex = LoadRenderTexture(ctx.vres.x, ctx.vres.y);
             ctx.ffmpeg = ffmpeg_start_rendering_video(
@@ -379,7 +397,7 @@ Obj spo_text(const char *str, DVector2 pos, f32 font_size, Color color)
             .text = {
                 .str = arena_strdup(&arena, str),
                 .position = pos,
-                .font_size = font_size,
+                .font_factor = font_size / (f32)ctx.min_side_divisions,
                 .color = color,
             }
         }
@@ -552,20 +570,6 @@ void spo_get_color(Obj *obj, Color **color)
     }
 }
 
-// NOTE: This is only used for the font value for now
-static f32 spv__adjusted_value(f32 f)
-{
-    return (f / (f32)ctx.pres.y) * ctx.vres.y;
-}
-
-static Vector2 spv__adjusted_coords(Vector2 v)
-{
-    return Vector2Multiply(
-        Vector2Divide(v, spv_itof(ctx.pres)),
-        spv_itof(ctx.vres)
-    );
-}
-
 void spo_render(Obj obj)
 {
     if (!obj.enabled) return;
@@ -573,14 +577,11 @@ void spo_render(Obj obj)
     switch (obj.kind) {
         case OK_RECT: {
             Rect r = obj.as.rect;
-            Vector2 pos = Vector2Scale(spv_dtof(r.position), UNIT_TO_PX);
-            Vector2 size = Vector2Scale(spv_dtof(r.size), UNIT_TO_PX);
+            Vector2 pos = Vector2Scale(spv_dtof(r.position), ctx.scale_factor);
+            Vector2 size = Vector2Scale(spv_dtof(r.size), ctx.scale_factor);
             pos = Vector2Subtract(pos, Vector2Scale(size, 0.5));
 
-            DrawRectangleV(
-                spv__adjusted_coords(pos),
-                spv__adjusted_coords(size),
-                r.color);
+            DrawRectangleV(pos, size, r.color);
         } break;
 
         case OK_TEXT: {
@@ -588,17 +589,12 @@ void spo_render(Obj obj)
             Font font = GetFontDefault();
             f32 spacing = 2.0f;
 
-            Vector2 pos = Vector2Scale(spv_dtof(t.position), UNIT_TO_PX);
-            f32 font_size = t.font_size;
+            Vector2 pos = Vector2Scale(spv_dtof(t.position), ctx.scale_factor);
+            f32 font_size = t.font_factor * ctx.scale_factor;
             Vector2 text_dim = MeasureTextEx(font, t.str, font_size, spacing);
             pos = Vector2Subtract(pos, Vector2Scale(text_dim, 0.5));
 
-            DrawTextEx(
-                font, t.str,
-                spv__adjusted_coords(pos),
-                spv__adjusted_value(font_size),
-                spv__adjusted_value(spacing),
-                t.color);
+            DrawTextEx(font, t.str, pos, font_size, spacing, t.color);
         } break;
 
         case OK_AXES: {
@@ -643,7 +639,7 @@ void spo_render(Obj obj)
             Typst t = obj.as.typst;
             IVector2 tex_dim = {t.texture.width, t.texture.height};
             Vector2 pos = Vector2Subtract(
-                Vector2Scale(spv_dtof(t.position), UNIT_TO_PX),
+                Vector2Scale(spv_dtof(t.position), ctx.scale_factor),
                 Vector2Scale(spv_itof(tex_dim), 0.5));
             DrawTextureV(t.texture, pos, t.color);
         } break;
