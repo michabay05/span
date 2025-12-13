@@ -19,7 +19,8 @@ bool spc_init(const char *filename, RenderMode mode)
     //   (2) Raylib: initialize window and other related things
 
     ctx = (Context){0};
-    ctx.umka = NULL;
+    ctx.paused = false;
+    ctx.completed = false;
     ctx.easing = EM_Sine;
     ctx.dt_mul = 1;
 
@@ -118,6 +119,7 @@ void spc_renderer_init(RenderMode mode)
             }
 
             ctx.rtex = LoadRenderTexture(ctx.vres.x, ctx.vres.y);
+            SetTextureFilter(ctx.rtex.texture, TEXTURE_FILTER_BILINEAR);
             ctx.ffmpeg = ffmpeg_start_rendering_video(
                 "out.mov", (size_t)ctx.vres.x, (size_t)ctx.vres.y, (size_t)ctx.fps);
         } break;
@@ -158,62 +160,66 @@ void spc_deinit(void)
 
 void spc_update(f32 dt)
 {
-    if (ctx.current < ctx.tasks.count) {
-        Task task = ctx.tasks.items[ctx.current];
-        float factor = sp_easing(ctx.t, task.duration);
+    if (ctx.paused || ctx.completed) {
+        return;
+    }
 
-        if (ctx.t <= task.duration) {
-            ActionList al = task.actions;
-            for (int i = 0; i < al.count; i++) {
-                Action a = al.items[i];
+    if (ctx.current >= ctx.tasks.count) {
+        ctx.completed = true;
+        if (ctx.render_mode == RM_Output) ctx.quit = true;
+        return;
+    }
 
-                switch (a.kind) {
-                    case AK_Enable: {
-                        Obj *obj = NULL;
-                        SP_ASSERT(spc_get_obj(a.obj_id, &obj));
-                        obj->enabled = true;
-                    } break;
+    Task task = ctx.tasks.items[ctx.current];
+    float factor = sp_easing(ctx.t, task.duration);
 
-                    case AK_Wait: break;
+    if (ctx.t > task.duration) {
+        ctx.current++;
+        ctx.t = 0.0f;
+    }
 
-                    case AK_Move: {
-                        Obj *obj = {0};
-                        DVector2 *pos = NULL;
-                        SP_ASSERT(spc_get_obj(a.obj_id, &obj));
-                        SP_ASSERT(obj->enabled);
-                        spo_get_pos(obj, &pos);
-                        SP_ASSERT(pos != NULL);
+    ActionList al = task.actions;
+    for (int i = 0; i < al.count; i++) {
+        Action a = al.items[i];
 
-                        spa_interp(a, (void*)&pos, factor);
-                    } break;
+        switch (a.kind) {
+            case AK_Enable: {
+                Obj *obj = NULL;
+                SP_ASSERT(spc_get_obj(a.obj_id, &obj));
+                obj->enabled = true;
+            } break;
 
-                    case AK_Fade: {
-                        Obj *obj = {0};
-                        Color *color = NULL;
-                        SP_ASSERT(spc_get_obj(a.obj_id, &obj));
-                        SP_ASSERT(obj->enabled);
-                        spo_get_color(obj, &color);
-                        SP_ASSERT(color != NULL);
+            case AK_Wait: break;
 
-                        spa_interp(a, (void*)&color, factor);
-                    } break;
+            case AK_Move: {
+                Obj *obj = {0};
+                DVector2 *pos = NULL;
+                SP_ASSERT(spc_get_obj(a.obj_id, &obj));
+                SP_ASSERT(obj->enabled);
+                spo_get_pos(obj, &pos);
+                SP_ASSERT(pos != NULL);
 
-                    default: {
-                        SP_UNREACHABLEF("Unknown kind: %d", a.kind);
-                    } break;
-                }
-            }
+                spa_interp(a, (void*)&pos, factor);
+            } break;
 
-            ctx.t += dt;
-        } else {
-            ctx.current++;
-            if (ctx.current < ctx.tasks.count) {
-                ctx.t = 0.0f;
-            } else {
-                ctx.paused = true;
-            }
+            case AK_Fade: {
+                Obj *obj = {0};
+                Color *color = NULL;
+                SP_ASSERT(spc_get_obj(a.obj_id, &obj));
+                SP_ASSERT(obj->enabled);
+                spo_get_color(obj, &color);
+                SP_ASSERT(color != NULL);
+
+                spa_interp(a, (void*)&color, factor);
+            } break;
+
+            default: {
+                SP_UNREACHABLEF("Unknown kind: %d", a.kind);
+            } break;
         }
     }
+
+    ctx.t += dt;
 }
 
 static void spc__main_render(void)
@@ -240,7 +246,11 @@ static void spc__preview_render(void)
             TextFormat(ctx.dt_mul > 0 ? "%dx" : "1/%dx", abs(ctx.dt_mul)),
             pos.x, pos.y + 25, 20, WHITE
         );
-        if (ctx.paused) DrawText("Paused", pos.x, pos.y + 2*25, 20, WHITE);
+        if (ctx.completed) {
+            DrawText("Completed", pos.x, pos.y + 2*25, 20, WHITE);
+        } else  if (ctx.paused) {
+            DrawText("Paused", pos.x, pos.y + 2*25, 20, WHITE);
+        }
     } EndDrawing();
 }
 
@@ -368,6 +378,7 @@ void spc_reset(void)
     ctx.current = 0;
     ctx.t = 0.0f;
     ctx.paused = false;
+    ctx.completed = false;
     ctx.quit = false;
 }
 
@@ -589,6 +600,10 @@ void spo_get_pos(Obj *obj, DVector2 **pos)
             *pos = &obj->as.typst.position;
         } break;
 
+        case OK_CURVE: {
+            *pos = &obj->as.curve.offset;
+        } break;
+
         default: {
             SP_UNREACHABLEF("Unknown kind of object: %d", obj->kind);
         } break;
@@ -672,12 +687,13 @@ void spo_render(Obj obj)
 
         case OK_CURVE: {
             Curve c = obj.as.curve;
+            Vector2 offset = Vector2Scale(spv_dtof(c.offset), ctx.scale_factor);
             SP_ASSERT(c.pts.count >= 2);
             f32 thickness = 4.f;
 
             for (int i = 1; i < c.pts.count; i++) {
-                Vector2 start = c.pts.items[i-1];
-                Vector2 end = c.pts.items[i];
+                Vector2 start = Vector2Add(c.pts.items[i-1], offset);
+                Vector2 end = Vector2Add(c.pts.items[i], offset);
 
                 // Line between two data points
                 DrawLineEx(start, end, thickness, c.color);
@@ -686,7 +702,9 @@ void spo_render(Obj obj)
             }
 
             // Cap the last point with a circle
-            DrawCircleV(c.pts.items[c.pts.count - 1], thickness / 2.0f, c.color);
+            DrawCircleV(
+                Vector2Add(c.pts.items[c.pts.count - 1], offset),
+                thickness / 2.0f, c.color);
         } break;
 
         case OK_TYPST: {

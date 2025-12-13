@@ -117,6 +117,7 @@ SP_STRUCT_ARR(PointList, Vector2);
 // for me to do was to make a them a separate object (not sub-object).
 typedef struct {
     Id axes_id;
+    DVector2 offset;
     PointList pts;
     Color color;
 } Curve;
@@ -177,7 +178,7 @@ typedef struct {
     int preamble_lines;
     int current;
     f32 t;
-    bool paused, quit;
+    bool paused, quit, completed;
 
     // NOTE: preview window resolution, output video resolution
     IVector2 pres, vres;
