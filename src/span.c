@@ -57,6 +57,8 @@ bool spc_umka_init(const char *filename)
         (UmkaFunc){.name = "curve", .func = &spuo_curve},
         (UmkaFunc){.name = "typst", .func = &spuo_typst},
 
+        (UmkaFunc){.name = "get_camera", .func = &spuo_get_camera},
+
         (UmkaFunc){.name = "fade_in", .func = &spu_fade_in},
         (UmkaFunc){.name = "fade_out", .func = &spu_fade_out},
         (UmkaFunc){.name = "move", .func = &spu_move},
@@ -130,12 +132,11 @@ void spc_renderer_init(RenderMode mode)
     }
     ctx.render_mode = mode;
 
-    ctx.cam = (Camera2D) {
-        .offset = Vector2Scale(spv_itof(ctx.vres), 0.5),
-        .target = Vector2Zero(),
-        .rotation = 0.0f,
-        .zoom = 1.0f,
-    };
+    // Add main camera
+    // NOTE: the main camera should always be the first object in the obj_list
+    spc_add_obj(
+        spo_camera(spv_ftod(Vector2Zero()))
+    );
 }
 
 void spc_run_umka(void)
@@ -143,7 +144,6 @@ void spc_run_umka(void)
     spu_run_sequence();
     spc_reset();
 }
-
 
 void spc_deinit(void)
 {
@@ -224,9 +224,15 @@ void spc_update(f32 dt)
 
 static void spc__main_render(void)
 {
+    // NOTE: The first object in the list should always be camera
+    Obj obj = ctx.objs.items[0];
+    SP_ASSERT(obj.kind == OK_CAMERA);
+    Camera2D cam = obj.as.cam.rl_cam;
+    cam.target = Vector2Scale(spv_dtof(obj.as.cam.target), ctx.scale_factor);
+
     ClearBackground(BLACK);
 
-    BeginMode2D(ctx.cam); {
+    BeginMode2D(cam); {
         for (int i = 0; i < ctx.objs.count; i++) {
             Obj *obj = NULL;
             SP_ASSERT(spc_get_obj(i, &obj));
@@ -299,6 +305,12 @@ void spc_render(void)
             SP_UNREACHABLEF("Unknown render mode: %d", ctx.render_mode);
         } break;
     }
+}
+
+void spc_add_obj(Obj obj)
+{
+    arena_da_append(&arena, &ctx.objs, obj);
+    arena_da_append(&arena, &ctx.orig_objs, obj);
 }
 
 Id spc_next_id(void)
@@ -395,11 +407,35 @@ void spc_clear_for_recomp(void)
         switch (o->kind) {
             case OK_TYPST: {
                 UnloadTexture(o->as.typst.texture);
-            }
+            } break;
 
             default: break;
         }
     }
+}
+
+Obj spo_camera(DVector2 pos)
+{
+    // NOTE: Default camera setup
+    Camera2D cam = {
+        .offset = Vector2Scale(spv_itof(ctx.vres), 0.5),
+        .target = Vector2Zero(),
+        .rotation = 0.0f,
+        .zoom = 1.0f,
+    };
+
+    return (Obj) {
+        .id = spc_next_id(),
+        .kind = OK_CAMERA,
+        // NOTE: Cameras are enabled by default
+        .enabled = true,
+        .as = {
+            .cam = (SPCamera) {
+                .target = pos,
+                .rl_cam = cam
+            }
+        }
+    };
 }
 
 Obj spo_rect(DVector2 pos, DVector2 size, Color color)
@@ -604,6 +640,10 @@ void spo_get_pos(Obj *obj, DVector2 **pos)
             *pos = &obj->as.curve.offset;
         } break;
 
+        case OK_CAMERA: {
+            *pos = &obj->as.cam.target;
+        } break;
+
         default: {
             SP_UNREACHABLEF("Unknown kind of object: %d", obj->kind);
         } break;
@@ -623,6 +663,11 @@ void spo_get_color(Obj *obj, Color **color)
 
         case OK_TYPST: {
             *color = &obj->as.typst.color;
+        } break;
+
+        case OK_CAMERA: {
+            printf("WARN: A camera does not have a color; ignoring it.\n");
+            SP_ASSERT(false);
         } break;
 
         default: {
@@ -715,6 +760,9 @@ void spo_render(Obj obj)
                 Vector2Scale(spv_itof(tex_dim), 0.5));
             DrawTextureV(t.texture, pos, t.color);
         } break;
+
+        // A camera can't be rendered
+        case OK_CAMERA: break;
 
         default: {
             SP_UNREACHABLEF("Unknown kind of object: %d", obj.kind);
@@ -829,8 +877,7 @@ void spuo_rect(UmkaStackSlot *p, UmkaStackSlot *r)
     Obj rect = spo_rect(pos, size, color);
     umkaGetResult(p, r)->intVal = rect.id;
 
-    arena_da_append(&arena, &ctx.objs, rect);
-    arena_da_append(&arena, &ctx.orig_objs, rect);
+    spc_add_obj(rect);
 }
 
 void spuo_text(UmkaStackSlot *p, UmkaStackSlot *r)
@@ -843,8 +890,7 @@ void spuo_text(UmkaStackSlot *p, UmkaStackSlot *r)
     Obj text = spo_text((const char *)text_str, pos, font_size, color);
     umkaGetResult(p, r)->intVal = text.id;
 
-    arena_da_append(&arena, &ctx.objs, text);
-    arena_da_append(&arena, &ctx.orig_objs, text);
+    spc_add_obj(text);
 }
 
 void spuo_axes(UmkaStackSlot *p, UmkaStackSlot *r)
@@ -858,8 +904,7 @@ void spuo_axes(UmkaStackSlot *p, UmkaStackSlot *r)
     Obj axes = spo_axes(spv_dtof(center), xmin, xmax, ymin, ymax);
     umkaGetResult(p, r)->intVal = axes.id;
 
-    arena_da_append(&arena, &ctx.objs, axes);
-    arena_da_append(&arena, &ctx.orig_objs, axes);
+    spc_add_obj(axes);
 }
 
 void spuo_curve(UmkaStackSlot *p, UmkaStackSlot *r)
@@ -870,8 +915,7 @@ void spuo_curve(UmkaStackSlot *p, UmkaStackSlot *r)
     Obj curve = spo_curve(axes_id, umka_pts);
     umkaGetResult(p, r)->intVal = curve.id;
 
-    arena_da_append(&arena, &ctx.objs, curve);
-    arena_da_append(&arena, &ctx.orig_objs, curve);
+    spc_add_obj(curve);
 }
 
 void spuo_typst(UmkaStackSlot *p, UmkaStackSlot *r)
@@ -884,8 +928,17 @@ void spuo_typst(UmkaStackSlot *p, UmkaStackSlot *r)
     Obj typst = spo_typst((const char *)text, font_size, pos, color);
     umkaGetResult(p, r)->intVal = typst.id;
 
-    arena_da_append(&arena, &ctx.objs, typst);
-    arena_da_append(&arena, &ctx.orig_objs, typst);
+    spc_add_obj(typst);
+}
+
+void spuo_get_camera(UmkaStackSlot *p, UmkaStackSlot *r)
+{
+    SP_UNUSED(p);
+    SP_UNUSED(r);
+
+    Id cam_id = 0;
+    SP_ASSERT(ctx.objs.items[cam_id].kind == OK_CAMERA);
+    umkaGetResult(p, r)->intVal = cam_id;
 }
 
 void spuo_enable(UmkaStackSlot *p, UmkaStackSlot *r)

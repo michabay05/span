@@ -132,12 +132,18 @@ typedef struct {
     Texture texture;
 } Typst;
 
+typedef struct {
+    DVector2 target;
+    Camera2D rl_cam;
+} SPCamera;
+
 typedef enum {
     OK_RECT,
     OK_TEXT,
     OK_AXES,
     OK_CURVE,
     OK_TYPST,
+    OK_CAMERA,
 } ObjKind;
 
 typedef struct {
@@ -150,6 +156,7 @@ typedef struct {
         Axes axes;
         Curve curve;
         Typst typst;
+        SPCamera cam;
     } as;
 } Obj;
 SP_STRUCT_ARR(ObjList, Obj);
@@ -196,7 +203,8 @@ typedef struct {
     FFMPEG *ffmpeg;
 } Context;
 
-#define __UNIT_TO_PX 50
+// NOTE: This is used for object associated with the wait action...essentially,
+// this is to say the entire scene should just pause. It feels a hack, tho.
 #define SCENE_OBJ ((Id)-1)
 
 extern Arena arena;
@@ -211,6 +219,7 @@ void spc_run_umka(void);
 void spc_deinit(void);
 void spc_update(f32 dt);
 void spc_render(void);
+void spc_add_obj(Obj obj);
 Id spc_next_id(void);
 void spc_print_tasks(TaskList tl);
 void spc_new_task(f64 duration);
@@ -218,7 +227,7 @@ void spc_add_action(Action action);
 bool spc_get_obj(Id id, Obj **obj);
 void spc_clear_for_recomp(void);
 void spc_reset(void);
-// Obj spo_rect(DVector2 pos, DVector2 size, Color color);
+Obj spo_camera(DVector2 pos);
 bool spo_typst_compile(Typst *typ);
 void spo_get_pos(Obj *obj, DVector2 **pos);
 void spo_get_color(Obj *obj, Color **color);
@@ -233,6 +242,7 @@ void spuo_text(UmkaStackSlot *p, UmkaStackSlot *r);
 void spuo_axes(UmkaStackSlot *p, UmkaStackSlot *r);
 void spuo_curve(UmkaStackSlot *p, UmkaStackSlot *r);
 void spuo_typst(UmkaStackSlot *p, UmkaStackSlot *r);
+void spuo_get_camera(UmkaStackSlot *p, UmkaStackSlot *r);
 void spuo_enable(UmkaStackSlot *p, UmkaStackSlot *r);
 void spu_fade_in(UmkaStackSlot *p, UmkaStackSlot *r);
 void spu_fade_out(UmkaStackSlot *p, UmkaStackSlot *r);

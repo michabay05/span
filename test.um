@@ -1,10 +1,27 @@
+fn f(x: real): real {
+    return x*x;
+}
+
 fn sequence(): void {
+    // ======== Setup ========
     a := axes(Vec2{0, -0.8});
-    c := plot_curve(a, fn(x: real): real {
-        return cos(std::pi*x);
-    }, 120);
-    t := typst("sin(x) = cos(x - pi/2)", 15, Vec2{0, 4});
+    c := plot_curve(a, f);
+    t := typst("y = x^2", 15, Vec2{0, 4});
+    cam := get_camera()
+
     enable(a);
     enable(c);
     enable(t);
+
+    wait();
+    play();
+
+    move(c, Vec2{0, 3});
+    play(2);
+
+    move(cam, Vec2{13, 0});
+    play(2);
+
+    fade_in(cam);
+    play(2);
 }

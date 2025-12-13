@@ -22,9 +22,10 @@ fn plot_curve(axes_id: Id, func: fn(x: real): real, samples: int32 = 75): Id {
 
     return curve(axes_id, pts);
 }
-
 fn typst(s: str, font_size: real = 1.0, pos: Vec2 = Vec2{0, 0},
     color: Color = Color{255, 255, 255, 255}): Id;
+
+fn get_camera(): Id;
 
 fn fade_in(id: Id, delay: real = 0.0): void;
 fn fade_out(id: Id, delay: real = 0.0): void;
