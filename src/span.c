@@ -85,45 +85,39 @@ bool spc_umka_init(const char *filename)
 
 void spc_renderer_init(RenderMode mode)
 {
-    ctx.pres = (IVector2){ 800, 600 };
+    IVector2 pres = { 800, 600 };
     SetConfigFlags(FLAG_MSAA_4X_HINT);
-    InitWindow(ctx.pres.x, ctx.pres.y, "span");
+    InitWindow(pres.x, pres.y, "span");
     ctx.fps = 60;
     SetTargetFPS(ctx.fps);
 
-    ctx.min_side_divisions = 10;
     switch (mode) {
         case RM_Preview: {
-            ctx.vres = ctx.pres;
+            ctx.res = spv_itof(pres);
 
-            if (ctx.pres.x < ctx.pres.y) {
+            if (pres.x < pres.y) {
                 // The horz length is smaller (Portrait)
                 SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
-            } else {
-                // The vert length is smaller (Landscape)
-                ctx.scale_factor = (f32)ctx.pres.y / (f32)ctx.min_side_divisions;
             }
         } break;
 
         case RM_Output: {
-            ctx.vres = (IVector2){ 1200, 900 };
+            ctx.res = (Vector2){ 1200, 900 };
             // NOTE: The aspect ratio of the preview window and video have to be the same.
-            f32 p_aspect_ratio = (f32)ctx.pres.x / (f32)ctx.pres.y;
-            f32 v_aspect_ratio = (f32)ctx.vres.x / (f32)ctx.vres.y;
+            // TODO: This is a temporary limitation; fix this
+            f32 p_aspect_ratio = (f32)pres.x / (f32)pres.y;
+            f32 v_aspect_ratio = (f32)ctx.res.x / (f32)ctx.res.y;
             SP_ASSERT(p_aspect_ratio == v_aspect_ratio);
 
-            if (ctx.vres.x < ctx.vres.y) {
+            if (ctx.res.x < ctx.res.y) {
                 // The horz length is smaller (Portrait)
                 SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
-            } else {
-                // The vert length is smaller (Landscape)
-                ctx.scale_factor = (f32)ctx.vres.y / (f32)ctx.min_side_divisions;
             }
 
-            ctx.rtex = LoadRenderTexture(ctx.vres.x, ctx.vres.y);
+            ctx.rtex = LoadRenderTexture(ctx.res.x, ctx.res.y);
             SetTextureFilter(ctx.rtex.texture, TEXTURE_FILTER_BILINEAR);
             ctx.ffmpeg = ffmpeg_start_rendering_video(
-                "out.mov", (size_t)ctx.vres.x, (size_t)ctx.vres.y, (size_t)ctx.fps);
+                "out.mov", (size_t)ctx.res.x, (size_t)ctx.res.y, (size_t)ctx.fps);
         } break;
 
         default: {
@@ -222,13 +216,21 @@ void spc_update(f32 dt)
     ctx.t += dt;
 }
 
+static Vector2 spv__denorm_coords(Vector2 v)
+{
+    Vector2 factor = ctx.res;
+    f32 aspect_ratio = ctx.res.x / ctx.res.y;
+    factor.x = ctx.res.x / aspect_ratio;
+    return Vector2Multiply(v, factor);
+}
+
 static void spc__main_render(void)
 {
     // NOTE: The first object in the list should always be camera
     Obj obj = ctx.objs.items[0];
     SP_ASSERT(obj.kind == OK_CAMERA);
     Camera2D cam = obj.as.cam.rl_cam;
-    cam.target = Vector2Scale(spv_dtof(obj.as.cam.target), ctx.scale_factor);
+    cam.target = spv__denorm_coords(spv_dtof(obj.as.cam.target));
 
     ClearBackground(BLACK);
 
@@ -252,11 +254,18 @@ static void spc__preview_render(void)
             TextFormat(ctx.dt_mul > 0 ? "%dx" : "1/%dx", abs(ctx.dt_mul)),
             pos.x, pos.y + 25, 20, WHITE
         );
+        const char *text = NULL;
         if (ctx.completed) {
-            DrawText("Completed", pos.x, pos.y + 2*25, 20, WHITE);
-        } else  if (ctx.paused) {
-            DrawText("Paused", pos.x, pos.y + 2*25, 20, WHITE);
+            text = "Completed";
+        } else if (ctx.paused) {
+            text = "Paused";
+        } else {
+            text = "Playing";
         }
+        if (ctx.debug) {
+            text = TextFormat("%s [D]", text);
+        }
+        DrawText(text, pos.x, pos.y + 2*25, 20, WHITE);
     } EndDrawing();
 }
 
@@ -283,7 +292,8 @@ static void spc__output_render(void)
 
         const char *text = "Rendering...";
         Vector2 text_dim = MeasureTextEx(font, text, font_size, spacing);
-        Vector2 pos = Vector2Scale(spv_itof(ctx.pres), 0.5);
+        Vector2 preview_res = {GetScreenWidth(), GetScreenHeight()};
+        Vector2 pos = Vector2Scale(preview_res, 0.5);
         pos = Vector2Subtract(pos, Vector2Scale(text_dim, 0.5));
 
         DrawTextEx(font, text, pos, font_size, spacing, WHITE);
@@ -318,26 +328,6 @@ Id spc_next_id(void)
     Id id = ctx.id_counter;
     ctx.id_counter++;
     return id;
-}
-
-IVector2 spc_get_res(void)
-{
-    IVector2 res = {0};
-    switch (ctx.render_mode) {
-        case RM_Preview: {
-            res = ctx.pres;
-        } break;
-
-        case RM_Output: {
-            res = ctx.vres;
-        } break;
-
-        default: {
-            SP_UNREACHABLEF("Unknown render mode: %d", ctx.render_mode);
-        } break;
-    }
-
-    return res;
 }
 
 void spc_print_tasks(TaskList tl)
@@ -418,7 +408,7 @@ Obj spo_camera(DVector2 pos)
 {
     // NOTE: Default camera setup
     Camera2D cam = {
-        .offset = Vector2Scale(spv_itof(ctx.vres), 0.5),
+        .offset = Vector2Scale(ctx.res, 0.5),
         .target = Vector2Zero(),
         .rotation = 0.0f,
         .zoom = 1.0f,
@@ -474,11 +464,11 @@ Obj spo_text(const char *str, DVector2 pos, f32 font_factor, Color color)
 
 Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax)
 {
-    Vector2 size = {8, 8};
+    Vector2 size = {0.8, 0.8};
     Vector2 pos = Vector2Subtract(center, Vector2Scale(size, 0.5));
 
-    pos = Vector2Scale(pos, ctx.scale_factor);
-    size = Vector2Scale(size, ctx.scale_factor);
+    pos = spv__denorm_coords(pos);
+    size = spv__denorm_coords(size);
 
     Axes axes = {
         .xmin = xmin, .xmax = xmax, .ymin = ymin, .ymax = ymax,
@@ -503,7 +493,7 @@ Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax)
     // axes.coord_size.y *= -1.f;
 
     // Position of the center of the axes' box
-    Vector2 box_center = Vector2Scale(center, ctx.scale_factor);
+    Vector2 box_center = spv__denorm_coords(center);
     // Vector2 box_center = {
     //     .x = axes.box.x + 0.5f*axes.box.width,
     //     .y = axes.box.y + 0.5f*axes.box.height,
@@ -598,7 +588,7 @@ bool spo_typst_compile(Typst *typ)
     }
 
     Nob_String_Builder sb = {0};
-    f32 font_size = typ->font_factor * ctx.scale_factor;
+    f32 font_size = typ->font_factor * ctx.res.y;
     nob_sb_appendf(&sb,
         "#set page(width: auto, height: auto, margin: 0in, fill: none)\n"
         "#set text(size: %fpt, fill: white)\n"
@@ -683,8 +673,8 @@ void spo_render(Obj obj)
     switch (obj.kind) {
         case OK_RECT: {
             Rect r = obj.as.rect;
-            Vector2 pos = Vector2Scale(spv_dtof(r.position), ctx.scale_factor);
-            Vector2 size = Vector2Scale(spv_dtof(r.size), ctx.scale_factor);
+            Vector2 pos = spv__denorm_coords(spv_dtof(r.position));
+            Vector2 size = spv__denorm_coords(spv_dtof(r.size));
             pos = Vector2Subtract(pos, Vector2Scale(size, 0.5));
 
             DrawRectangleV(pos, size, r.color);
@@ -695,8 +685,8 @@ void spo_render(Obj obj)
             Font font = GetFontDefault();
             f32 spacing = 2.0f;
 
-            Vector2 pos = Vector2Scale(spv_dtof(t.position), ctx.scale_factor);
-            f32 font_size = t.font_factor * ctx.scale_factor;
+            Vector2 pos = spv__denorm_coords(spv_dtof(t.position));
+            f32 font_size = t.font_factor * ctx.res.y;
             Vector2 text_dim = MeasureTextEx(font, t.str, font_size, spacing);
             pos = Vector2Subtract(pos, Vector2Scale(text_dim, 0.5));
 
@@ -732,7 +722,7 @@ void spo_render(Obj obj)
 
         case OK_CURVE: {
             Curve c = obj.as.curve;
-            Vector2 offset = Vector2Scale(spv_dtof(c.offset), ctx.scale_factor);
+            Vector2 offset = spv__denorm_coords(spv_dtof(c.offset));
             SP_ASSERT(c.pts.count >= 2);
             f32 thickness = 4.f;
 
@@ -756,7 +746,7 @@ void spo_render(Obj obj)
             Typst t = obj.as.typst;
             IVector2 tex_dim = {t.texture.width, t.texture.height};
             Vector2 pos = Vector2Subtract(
-                Vector2Scale(spv_dtof(t.position), ctx.scale_factor),
+                spv__denorm_coords(spv_dtof(t.position)),
                 Vector2Scale(spv_itof(tex_dim), 0.5));
             DrawTextureV(t.texture, pos, t.color);
         } break;

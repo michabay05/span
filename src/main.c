@@ -36,6 +36,9 @@ int main(void)
             spc_run_umka();
             printf("Recompiled %s\n", filename);
         }
+        if (IsKeyPressed(KEY_D)) {
+            ctx.debug = !ctx.debug;
+        }
 
         if (!ctx.paused) {
             SP_ASSERT(ctx.dt_mul != 0);

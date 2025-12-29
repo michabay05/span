@@ -187,11 +187,7 @@ typedef struct {
     f32 t;
     bool paused, quit, completed;
 
-    // NOTE: preview window resolution, output video resolution
-    IVector2 pres, vres;
-    int min_side_divisions;
-    f32 scale_factor;
-
+    Vector2 res;
     Camera2D cam;
     int fps;
     RenderMode render_mode;
@@ -201,6 +197,8 @@ typedef struct {
     int dt_mul;
 
     FFMPEG *ffmpeg;
+
+    bool debug;
 } Context;
 
 // NOTE: This is used for object associated with the wait action...essentially,
