@@ -11,9 +11,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <raylib.h>
-
-#include "ffmpeg.h"
 
 #define READ_END 0
 #define WRITE_END 1

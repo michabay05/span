@@ -11,29 +11,6 @@
 
 static Nob_Cmd cmd = {0};
 
-void compile_objs(const char *src_name)
-{
-    nob_cmd_append(&cmd, CC);
-    nob_cmd_append(&cmd, "-Wall", "-Wextra", "-pedantic", "-I"VENDOR_INCDIR);
-    nob_cmd_append(&cmd, "-ggdb");
-    nob_cmd_append(&cmd, "-c");
-    nob_cmd_append(&cmd, nob_temp_sprintf(SRCDIR"%s.c", src_name));
-    nob_cmd_append(&cmd, "-o");
-    nob_cmd_append(&cmd, nob_temp_sprintf(OBJDIR"%s.o", src_name));
-}
-
-void link_objs(size_t n, const char *src_names[n])
-{
-    nob_cmd_append(&cmd, CC);
-    for (size_t i = 0; i < n; i++) {
-        nob_cmd_append(&cmd, nob_temp_sprintf(OBJDIR"%s.o", src_names[i]));
-    }
-    nob_cmd_append(&cmd, "-o", BINARY);
-    nob_cmd_append(&cmd, "-L"VENDOR_LIBDIR);
-    nob_cmd_append(&cmd, "-l:libraylib.a", "-lm");
-    nob_cmd_append(&cmd, "-l:libumka.a");
-}
-
 int main(int argc, char **argv)
 {
     NOB_GO_REBUILD_URSELF(argc, argv);
@@ -49,22 +26,21 @@ int main(int argc, char **argv)
         }
     }
 
-    const char *src_names[] = { "main", "ffmpeg_linux", "span" };
-
-    size_t n = NOB_ARRAY_LEN(src_names);
-    for (size_t i = 0; i < n; i++) {
-        cmd.count = 0;
-        compile_objs(src_names[i]);
-        if (!nob_cmd_run_sync(cmd)) return 1;
-    }
-    cmd.count = 0;
-    link_objs(n, src_names);
-    if (!nob_cmd_run_sync(cmd)) return 1;
+    nob_cc(&cmd);
+    nob_cc_flags(&cmd);
+    nob_cc_output(&cmd, "span.bin");
+    nob_cmd_append(&cmd, "-Ivendor/include", "-I.");
+    nob_cc_inputs(&cmd, "src/span.c");
+    nob_cmd_append(&cmd, "-Lvendor/lib");
+    nob_cmd_append(&cmd, "-l:libraylib.a");
+    nob_cmd_append(&cmd, "-l:libumka.a");
+    nob_cmd_append(&cmd, "-lm");
+    if (!nob_cmd_run(&cmd)) return 1;
 
     if (run_bin) {
         cmd.count = 0;
         nob_cmd_append(&cmd, "./"BINARY);
-        if (!nob_cmd_run_sync(cmd)) return 1;
+        if (!nob_cmd_run(&cmd)) return 1;
     }
     return 0;
 }

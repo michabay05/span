@@ -1,0 +1,9 @@
+// For clangd
+-Ivendor/include/
+-I.
+
+-include src/base.h
+-include src/ffmpeg.h
+-include src/umka.h
+-include src/objects.h
+-include src/context.h
