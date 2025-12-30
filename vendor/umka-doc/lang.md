@@ -70,7 +70,7 @@ Examples:
 
 ### Character literals
 
-A character literal is an ASCII character enclosed in single quotes. Character literals can be specified "as is" or by an escape sequence. Escape sequence prefixes have the same meaning as in C or other languages.
+A character literal is an ASCII character enclosed in single quotes `''`. The character can be specified "as is" or by an escape sequence. Escape sequence prefixes have the same meaning as in C or other languages.
 
 Syntax:
 
@@ -91,20 +91,30 @@ Examples:
 
 ### String literals
 
-A string literal is a sequence of UTF-8 characters enclosed in double quotes. Characters can be specified "as is" or by an escape sequence.
+A string literal is a sequence of UTF-8 characters. 
+
+A single-line string literal is enclosed in double quotes `""`. A character can be specified "as is" or by an escape sequence. A new line character can only be specified by the escape sequence `"\n"`.
+
+A multi-line string literal is enclosed in back quotes `` ` ` ``. Any character is treated "as is", escape sequences and carriage return characters are ignored.
 
 Syntax:
 
 ```
-stringLiteral = """ {char | escSeq} """.
+stringLiteral     = singleLineLiteral | multiLineLiteral.
+singleLineLiteral = """ {char | escSeq} """.
+multiLineLiteral  = "`" {char} "`".
 ```
 
 Examples:
 
 ```
-"A long string"
+"A single-line string"
 "Hello, World\n"
 ""
+`A
+multi-
+line
+    string`
 ```
 
 ### Operators and punctuation
@@ -225,7 +235,7 @@ weak ^Vec
 
 ### String type
 
-A string is a sequence of UTF-8 characters. Its length is not fixed at compile time and can change at run time due to concatenation by using the  `+` operator.
+A string is a sequence of UTF-8 characters terminated by the `'\0'` character. 
 
 Syntax:
 
@@ -233,7 +243,7 @@ Syntax:
 strType = "str"
 ```
 
-String assignment copies the contents of the string.
+String assignment copies the pointer, but not the contents of the string.
 
 ### Array types
 
@@ -733,13 +743,16 @@ fn make(fiber, f: fn()): fiber                // (3)
 (3) Constructs a fiber and prepares it for calling the function `f`. The actual execution starts on the first call to `resume`.
 
 ```
-fn copy(a: []T): []T              // (1)
-fn copy(m: map[K]T): map[K]T      // (2)
+fn copy(a: str): str              // (1)
+fn copy(a: []T): []T              // (2)
+fn copy(m: map[K]T): map[K]T      // (3)
 ```
 
-(1) Constructs a copy of the dynamic array `a`.
+(1) Constructs a copy of the string `a`.
 
-(2) Constructs a copy of the map `m`.
+(2) Constructs a copy of the dynamic array `a`.
+
+(3) Constructs a copy of the map `m`.
 
 ```
 fn append(a: []T, x: T): []T                // (1)
@@ -784,13 +797,13 @@ fn sort(d: []T, ascending: bool [, fieldName])  // (2)
 fn len(a: ([...]T | []T | map[K]T | str)): int
 ```
 
-Returns the length of `a`, where `a` can be an array, a dynamic array, a map or a string.
+Returns the length of `a`, where `a` can be an array, a dynamic array, a map or a string. For strings, the length does not include the terminating `'\0'` character.
 
 ```
-fn cap(a: []T): int
+fn cap(a: ([]T | str)): int
 ```
 
-Returns the capacity of the dynamic array `a`, i.e., the number of items for which the space is allocated in `a`.
+Returns the capacity of the dynamic array or string `a`, i.e., the number of items for which memory is allocated in `a`. For strings, the capacity includes the terminating `'\0'` character. 
 
 ```
 fn sizeof(T | a: T): int
@@ -826,7 +839,7 @@ Checks whether the types of the variables that have been converted to the interf
 fn typeptr(T): ^void
 ```
 
-Returns a representation of type `T` as an opaque pointer. This pointer can be passed to the C/C++ host application to be used by the embedding API functions that require Umka types, such as `umkaMakeDynArray()`. 
+Returns a representation of type `T` as an opaque pointer. This function is deprecated. Use `umkaGetParamType` or `umkaGetResultType` instead.
 
 ```
 fn valid(a: ([]T | map[K]T | interface{...} | fn (...): T | fiber)): bool
@@ -1195,7 +1208,9 @@ x[i], x[i + 1] = x[i + 1], x[i]
 
 #### Short assignment
 
-A short assignment combines one of the operators `+`, `-`, `*`, `/`, `%`, `&`, `|`, `~`  with assignment according to the following rule: `a op= b` is equivalent to `a = a op b`. 
+A short assignment combines one of the operators `+`, `-`, `*`, `/`, `%`, `&`, `|`, `~`  with assignment according to the following rule: `a op= b` is equivalent to `a = a op b`.
+
+For strings, as a special case, the short assignment `a += b` appends `b` to the existing string `a` if `len(a) + len(b) < cap(a)`. Otherwise, it constructs a new string `a + b` and assigns it to `a` according to the general rule.
 
 Syntax:
 
@@ -1594,7 +1609,9 @@ decNumber           = digit {["_"] digit}.
 hexNumber           = "0" ("X | "x") ["_"] hexDigit {["_"] hexDigit}.
 realNumber          = decNumber ["." decNumber] [("E" | "e") decNumber].
 charLiteral         = "'" (char | escSeq) "'".
-stringLiteral       = """ {char | escSeq} """.
+stringLiteral       = singleLineLiteral | multiLineLiteral.
+singleLineLiteral   = """ {char | escSeq} """.
+multiLineLiteral    = "`" {char} "`".
 escSeq              = "\" ("0" | "a" | "b" | "e" | "f" | "n" | "r" | "t" | "v" | 
                            "x" hexNumber).
 letter              = "A".."Z" | "a".."z".

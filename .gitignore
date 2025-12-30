@@ -2,4 +2,5 @@
 /.vscode/
 /obj/
 /compile_commads.json
+/vendor/umka.bin
 /*.bin

@@ -4,17 +4,24 @@ The Umka interpreter is a static or shared library that provides the API for emb
 
 ## Initialization and running
 
+### Types
+
+```
+typedef struct tagUmka Umka;
+```
+Umka interpreter instance handle.
+
 ### Functions
 
 ```
-UMKA_API void *umkaAlloc(void);
+UMKA_API Umka *umkaAlloc(void);
 ```
 Allocates memory for the interpreter.
 
 Returned value: Interpreter instance handle.
 
 ```
-UMKA_API bool umkaInit(void *umka, const char *fileName, const char *sourceString, 
+UMKA_API bool umkaInit(Umka *umka, const char *fileName, const char *sourceString, 
                        int stackSize, void *reserved, 
                        int argc, char **argv, 
                        bool fileSystemEnabled, bool implLibsEnabled,
@@ -36,7 +43,7 @@ Parameters:
 Returned value: `true` if the source has been successfully loaded.
 
 ```
-UMKA_API bool umkaAddModule(void *umka, const char *fileName, const char *sourceString);
+UMKA_API bool umkaAddModule(Umka *umka, const char *fileName, const char *sourceString);
 ```
 Adds an Umka module contained in a string buffer.
 
@@ -49,7 +56,7 @@ Parameters:
 Returned value: `true` if the module has been successfully added.
 
 ```
-UMKA_API bool umkaCompile(void *umka);
+UMKA_API bool umkaCompile(Umka *umka);
 ```
 Compiles the Umka program into bytecode.
 
@@ -60,9 +67,9 @@ Parameters:
 Returned value: `true` if the compilation is successful and no compile-time errors are detected.
 
 ```
-UMKA_API int umkaRun(void *umka);
+UMKA_API int umkaRun(Umka *umka);
 ```
-Runs the Umka program previously compiled to bytecode, i.e., calls its `main` function, if it exists. After it returns,  gracefully deallocates heap memory referenced by global variables. 
+Runs the Umka program previously compiled to bytecode, i.e., calls its `main` function, if it exists. 
 
 Parameters:
 
@@ -71,9 +78,9 @@ Parameters:
 Returned value: 0 if the program execution finishes successfully and no run-time errors were detected, otherwise the error code.
 
 ```
-UMKA_API void umkaFree(void *umka);
+UMKA_API void umkaFree(Umka *umka);
 ```
-Deallocates memory allocated for the interpreter.
+Deallocates memory allocated for the interpreter and program's global variables.
 
 Parameters:
 
@@ -87,7 +94,7 @@ Returns Umka interpreter version.
 Returned value: Umka interpreter version (build date) string.
 
 ```
-UMKA_API void umkaSetMetadata(void *umka, void *metadata);
+UMKA_API void umkaSetMetadata(Umka *umka, void *metadata);
 ```
 Saves an arbitrary user data pointer to the Umka instance. Umka does not use the data in any way.
 
@@ -97,7 +104,7 @@ Parameters:
 * `metadata`: User data pointer
 
 ```
-UMKA_API void *umkaGetMetadata(void *umka);
+UMKA_API void *umkaGetMetadata(Umka *umka);
 ```
 Retrieves the user data pointer previously saved to the Umka instance with `umkaSetMetadata`.
 
@@ -146,7 +153,7 @@ Parameters:
 ### Functions
 
 ```
-UMKA_API bool umkaAddFunc(void *umka, const char *name, UmkaExternFunc func);
+UMKA_API bool umkaAddFunc(Umka *umka, const char *name, UmkaExternFunc func);
 ```
 Adds a C/C++ function to the list of external functions that can be called from Umka. 
 
@@ -159,7 +166,7 @@ Parameters:
 Returned value: `true` if the function has been successfully added.
 
 ```
-UMKA_API bool umkaGetFunc(void *umka, const char *moduleName, const char *fnName, 
+UMKA_API bool umkaGetFunc(Umka *umka, const char *moduleName, const char *fnName, 
                           UmkaFuncContext *fn);
 ```
 Finds an Umka function that can be called from C/C++ using `umkaCall`.
@@ -174,7 +181,7 @@ Parameters:
 Returned value: `true` if the function was found and its context filled.
 
 ```
-UMKA_API void umkaMakeFuncContext(void *umka, void *closureType, int entryOffset, 
+UMKA_API void umkaMakeFuncContext(Umka *umka, const UmkaType *closureType, int entryOffset, 
                                   UmkaFuncContext *fn);
 ```
 Fills in the function context required by `umkaCall`, if it could not be filled in by `umkaGetFunc`.
@@ -182,12 +189,12 @@ Fills in the function context required by `umkaCall`, if it could not be filled 
 Parameters:
 
 * `umka`: Interpreter instance handle
-* `closureType`: Umka function type. Must be obtained by calling `typeptr` and passed to the C/C++ code
+* `closureType`: Umka function type. Can be obtained by calling `umkaGetParamType`
 * `entryOffset`: Function entry point offset
 * `fn`: Function context to be filled in
 
 ``` 
-UMKA_API int umkaCall(void *umka, UmkaFuncContext *fn);
+UMKA_API int umkaCall(Umka *umka, UmkaFuncContext *fn);
 ```
 Calls an Umka function. 
 
@@ -201,7 +208,7 @@ Returned value: 0 if the Umka function returns successfully and no run-time erro
 ```
 UMKA_API UmkaStackSlot *umkaGetParam(UmkaStackSlot *params, int index);
 ```
-Finds the parameter slot.
+Finds function parameter slot.
 
 Parameters:
 
@@ -213,7 +220,7 @@ Returned value: Pointer to the first stack slot occupied by the parameter, `NULL
 ```
 UMKA_API UmkaAny *umkaGetUpvalue(UmkaStackSlot *params);
 ```
-Finds the captured variables.
+Finds variables captured by a closure.
 
 Parameters:
 
@@ -231,14 +238,28 @@ Parameters:
 * `params`: Parameter stack slots
 * `result`: Returned value stack slots
 
-Returned value: Pointer to the stack slot allocated for storing the returned value. Special rules apply to a returned value of a structured type or to multiple returned values (treated as a single implicit structure):
+Returned value: Pointer to the stack slot allocated for storing the returned value. 
 
-* Inside a C function called from Umka, this stack slot already contains the pointer to the memory area sufficiently large to store the actual returned value. The user must fill this memory area, but not rewrite the pointer
+Notes:
 
-* Before calling an Umka function from C, the user must allocate a memory area needed for storing the actual returned value and put the area pointer to the stack slot returned by `umkaGetResult`
+* Returned values of all ordinal types except `uint` are stored in the `intVal` field of the returned value slot
+
+* Returned values of type `uint` are stored in the `uintVal` field of the returned value slot
+
+* Returned values of types `real` and `real32` are stored in the `realVal` field of the returned value slot
+
+* Returned values of type `str` are stored in the `ptrVal` field of the returned value slot, treated as being of type `const unsigned char *`
+
+* Returned values of all structured types `T` are assumed to be allocated by the caller. The pointer to allocated memory is stored in the `ptrVal` field of the returned value slot, treated as being of type `T *`. In particular:
+
+  * Inside a C function called from Umka, the returned value is allocated by the Umka interpreter. The C function must put the returned value to allocated memory, but must not overwrite the pointer
+
+  * Before calling an Umka function from C, the C program must allocate memory needed for storing the returned value and put the pointer into the `ptrVal` field of the returned value slot
+
+* Multiple returned values of types `(T0, T1 /*...*/)`are treated as a single structure `struct {item0: T0; item1: T1 /*...*/}` and follow the rules for structured types
 
 ```
-static inline void *umkaGetInstance(UmkaStackSlot *result);
+static inline Umka *umkaGetInstance(UmkaStackSlot *result);
 ```
 Returns the interpreter instance handle. Must not be called after the first call to `umkaGetResult`.
 
@@ -277,6 +298,8 @@ typedef enum
 {
     UMKA_HOOK_CALL,
     UMKA_HOOK_RETURN,
+
+    UMKA_NUM_HOOKS
 } UmkaHookEvent;
 ```
 Umka debug hook event kind. A `UMKA_HOOK_CALL` hook is called after calling any Umka function, `UMKA_HOOK_RETURN` before returning from any Umka function.
@@ -295,7 +318,7 @@ Parameters:
 ### Functions
 
 ```
-UMKA_API UmkaError *umkaGetError(void *umka);
+UMKA_API UmkaError *umkaGetError(Umka *umka);
 ```
 Returns the last compile-time or run-time error.
 
@@ -306,9 +329,9 @@ Parameters:
 Returned value: Pointer to the error description. The pointer is valid until either a new error occurs, or `umkaFree` is called.
 
 ```
-UMKA_API bool umkaAlive(void *umka);
+UMKA_API bool umkaAlive(Umka *umka);
 ```
-Checks if the interpreter instance has been initialized and not yet terminated. Termination means that either the `main` function has exited, or `exit` has been called. Neither `umkaRun`, nor `umkaCall` can be called after the termination.
+Checks if the interpreter instance has been initialized and not yet terminated. Termination means that either a runtime error has happened, or `exit` has been called. Neither `umkaRun`, nor `umkaCall` can be called after the termination.
 
 Parameters:
 
@@ -317,7 +340,7 @@ Parameters:
 Returned value: `true` if the interpreter instance has not yet terminated.
 
 ```
-UMKA_API bool umkaGetCallStack(void *umka, int depth, int nameSize, 
+UMKA_API bool umkaGetCallStack(Umka *umka, int depth, int nameSize, 
                                int *offset, char *fileName, char *fnName, int *line);
 ```
 Finds the Umka call stack entry.
@@ -335,7 +358,7 @@ Parameters:
 Returned value: `true` on success.
 
 ```
-UMKA_API void umkaSetHook(void *umka, UmkaHookEvent event, UmkaHookFunc hook);
+UMKA_API void umkaSetHook(Umka *umka, UmkaHookEvent event, UmkaHookFunc hook);
 ```
 Sets a debug hook function that will be called by the Umka interpreter each time an event occurs.
 
@@ -346,7 +369,7 @@ Parameters:
 * `hook`: Hook function
 
 ```
-UMKA_API int64_t umkaGetMemUsage(void *umka);
+UMKA_API int64_t umkaGetMemUsage(Umka *umka);
 ```
 Returns the allocated heap memory size.
 
@@ -357,7 +380,7 @@ Parameters:
 Returned value: Memory size in bytes.
 
 ```
-UMKA_API char *umkaAsm(void *umka);
+UMKA_API char *umkaAsm(Umka *umka);
 ```
 Generates the Umka assembly listing for the Umka program previously compiled to bytecode. 
 
@@ -372,9 +395,14 @@ Returned value: String buffer pointer. It stays valid until `umkaFree` is called
 ### Types
 
 ```
+typedef struct tagType UmkaType;
+```
+Umka data type.
+
+```
 #define UmkaDynArray(T) struct \
 { \
-    void *internal; \
+    const UmkaType *type; \
     int64_t itemSize; \
     T *data; \
 }
@@ -384,8 +412,8 @@ Umka dynamic array containing items of type `T`. Can be initialized by calling `
 ```
 typedef struct
 {
-    void *internal1;
-    void *internal2;
+    const UmkaType *type;
+    struct tagMapNode *root;
 } UmkaMap;
 ```
 Umka map. Can be accessed by calling `umkaGetMapItem`.
@@ -393,8 +421,17 @@ Umka map. Can be accessed by calling `umkaGetMapItem`.
 ```
 typedef struct
 {
-    void *data;
-    void *type;
+    // Different field names are allowed for backward compatibility
+    union
+    {
+        void *data;
+        void *self;
+    };
+    union
+    {
+        const UmkaType *type;
+        const UmkaType *selfType;        
+    };
 } UmkaAny;
 ```
 Umka `any` interface.
@@ -411,9 +448,78 @@ Umka closure.
 ### Functions
 
 ```
-UMKA_API void *umkaAllocData(void *umka, int size, UmkaExternFunc onFree);
+UMKA_API const UmkaType *umkaGetParamType(UmkaStackSlot *params, int index);
 ```
-Allocates a reference-counted memory chunk.
+Returns function parameter type.
+
+Parameters:
+
+* `params`: Parameter stack slots
+* `index`: Parameter position. The leftmost parameter is at position 0
+
+Returned value: Parameter type, or `NULL` if there is no such parameter or if `umkaGetParamType` is called from an `onFree` callback.
+
+```
+UMKA_API const UmkaType *umkaGetResultType(UmkaStackSlot *params, UmkaStackSlot *result);
+```
+Returns function result type.
+
+Parameters:
+
+* `params`: Parameter stack slots
+* `result`: Returned value stack slots
+
+Returned value: Function result type, or `NULL` if `umkaGetResultType` is called from an `onFree` callback.
+
+```
+UMKA_API const UmkaType *umkaGetBaseType(const UmkaType *type);
+```
+For a pointer type, returns the base type. For an array or dynamic array type, returns the item type.
+
+Parameters:
+
+* `type`: Pointer, array or dynamic array type
+
+Returned value: Base type of a pointer type; item type of an array or dynamic array type; `NULL` otherwise.
+
+```
+UMKA_API const UmkaType *umkaGetFieldType(const UmkaType *structType, const char *fieldName);
+```
+Returns structure field type.
+
+Parameters:
+
+* `structType`: Structure type
+* `fieldName`: Field name
+
+Returned value: Field type; `NULL` if `structType` is not a structure type or has no field `fieldName`.
+
+```
+UMKA_API const UmkaType *umkaGetMapKeyType(const UmkaType *mapType);
+```
+Returns map key type.
+
+Parameters:
+
+* `mapType`: Map type
+
+Returned value: Key type; `NULL` if `mapType` is not a map type.
+
+```
+UMKA_API const UmkaType *umkaGetMapItemType(const UmkaType *mapType);
+```
+Returns map item type.
+
+Parameters:
+
+* `mapType`: Map type
+
+Returned value: Item type; `NULL` if `mapType` is not a map type.
+
+```
+UMKA_API void *umkaAllocData(Umka *umka, int size, UmkaExternFunc onFree);
+```
+Allocates an untyped chunk of heap memory.
 
 Parameters:
 
@@ -424,7 +530,7 @@ Parameters:
 Returned value: Pointer to the allocated chunk. 
 
 ```
-UMKA_API void umkaIncRef(void *umka, void *ptr);
+UMKA_API void umkaIncRef(Umka *umka, void *ptr);
 ```
 Increments the reference count of a memory chunk.
 
@@ -434,7 +540,7 @@ Parameters:
 * `ptr`: Chunk pointer
 
 ```
-UMKA_API void umkaDecRef(void *umka, void *ptr);
+UMKA_API void umkaDecRef(Umka *umka, void *ptr);
 ```
 Decrements the reference count of a memory chunk.
 
@@ -444,20 +550,7 @@ Parameters:
 * `ptr`: Chunk pointer
 
 ```
-UMKA_API void *umkaGetMapItem(void *umka, UmkaMap *map, UmkaStackSlot key);
-```
-Finds the map item by the given key.
-
-Parameters:
-
-* `umka`: Interpreter instance handle
-* `map`: Umka map
-* `key`: Key value
-
-Returned value: Pointer to the map item, `NULL` if the item does not exist.
-
-```
-UMKA_API char *umkaMakeStr(void *umka, const char *str);
+UMKA_API char *umkaMakeStr(Umka *umka, const char *str);
 ```
 Creates an Umka string from a C string. Every string passed from C/C++ to Umka should be created by calling this function.
 
@@ -480,15 +573,15 @@ Parameters:
 Returned value: String length, in bytes, not including the null character.
 
 ```
-UMKA_API void umkaMakeDynArray(void *umka, void *array, void *type, int len);
+UMKA_API void umkaMakeDynArray(Umka *umka, void *array, const UmkaType *type, int len);
 ```
 Creates a dynamic array. Equivalent to `array = make(type, len)` in Umka.
 
 Parameters:
 
 * `umka`: Interpreter instance handle
-* `array`: Pointer to the dynamic array represented as `UmkaDynArray(ItemType)`
-* `type`: Dynamic array type that can be obtained by calling `typeptr([]ItemType)` in Umka
+* `array`: Pointer to the dynamic array, actually of type `UmkaDynArray(ItemType)`
+* `type`: Dynamic array type. Can be obtained by calling `UmkaGetParamType`
 * `len`: Dynamic array length 
 
 ```
@@ -498,9 +591,34 @@ Returns the length of a dynamic array. Equivalent to `len(array)` in Umka.
 
 Parameters:
 
-* `array`: Pointer to the dynamic array represented as `UmkaDynArray(ItemType)`
+* `array`: Pointer to the dynamic array, actually of type `UmkaDynArray(ItemType)`
 
 Returned value: Dynamic array length
+
+```
+UMKA_API void *umkaMakeStruct(Umka *umka, const UmkaType *type);
+```
+Creates a structure or array in heap memory.
+
+Parameters:
+
+* `umka`: Interpreter instance handle
+* `type`: Structure or array type
+
+Returned value: Pointer to the created structure or array.
+
+```
+UMKA_API void *umkaGetMapItem(Umka *umka, UmkaMap *map, UmkaStackSlot key);
+```
+Finds the map item by the given key.
+
+Parameters:
+
+* `umka`: Interpreter instance handle
+* `map`: Umka map
+* `key`: Key value
+
+Returned value: Pointer to the map item, `NULL` if the item does not exist.
 
 ## Accessing Umka API dynamically
 
@@ -509,7 +627,7 @@ Using the Umka API functions generally requires linking against the Umka interpr
 ### Types
 
 ```
-typedef void *(*UmkaAlloc) (void);
+typedef Umka *(*UmkaAlloc) (void);
 // ... all other API function pointer types
 
 typedef struct
@@ -523,7 +641,7 @@ Collection of pointers to all the Umka API functions, except those declared as `
 ### Functions
 
 ```
-static inline UmkaAPI *umkaGetAPI(void *umka);
+static inline UmkaAPI *umkaGetAPI(Umka *umka);
 ```
 Returns Umka API function pointers. 
 
@@ -533,7 +651,7 @@ Parameters:
 
 Returned value: Collection of Umka API function pointers
 
-Example:
+## Appendix: UMI example
 
 ```
 // lib.um - UMI interface
@@ -541,6 +659,7 @@ Example:
 fn add*(a, b: real): real
 fn mulVec*(a: real, v: [2]real): [2]real
 fn hello*(): str
+fn squares*(n: int): []int
 ```
 ```
 // lib.c - UMI implementation
@@ -549,34 +668,49 @@ fn hello*(): str
 
 UMKA_EXPORT void add(UmkaStackSlot *params, UmkaStackSlot *result)
 {
-    void *umka = umkaGetInstance(result);
+    Umka *umka = umkaGetInstance(result);
     UmkaAPI *api = umkaGetAPI(umka);
 
-    double a = api->umkaGetParam(params, 0)->realVal;
-    double b = api->umkaGetParam(params, 1)->realVal;
+    const double a = api->umkaGetParam(params, 0)->realVal;
+    const double b = api->umkaGetParam(params, 1)->realVal;
     api->umkaGetResult(params, result)->realVal = a + b;
 }
 
-
 UMKA_EXPORT void mulVec(UmkaStackSlot *params, UmkaStackSlot *result)
 {
-    void *umka = umkaGetInstance(result);
+    Umka *umka = umkaGetInstance(result);
     UmkaAPI *api = umkaGetAPI(umka); 
 
-    double a = api->umkaGetParam(params, 0)->realVal;
-    double* v = (double *)api->umkaGetParam(params, 1);
+    const double a = api->umkaGetParam(params, 0)->realVal;
+    const double* v = (const double *)api->umkaGetParam(params, 1);
     double* out = api->umkaGetResult(params, result)->ptrVal;
 
     out[0] = a * v[0];
     out[1] = a * v[1];
 }
 
-
 UMKA_EXPORT void hello(UmkaStackSlot *params, UmkaStackSlot *result)
 {
-    void *umka = umkaGetInstance(result);
+    Umka *umka = umkaGetInstance(result);
     UmkaAPI *api = umkaGetAPI(umka);
     
     api->umkaGetResult(params, result)->ptrVal = api->umkaMakeStr(umka, "Hello");
+}
+
+UMKA_EXPORT void squares(UmkaStackSlot *params, UmkaStackSlot *result)
+{
+    Umka *umka = umkaGetInstance(result);
+    UmkaAPI *api = umkaGetAPI(umka);
+
+    const int n = api->umkaGetParam(params, 0)->intVal;
+
+    typedef UmkaDynArray(int64_t) IntArray;
+    IntArray *array = api->umkaGetResult(params, result)->ptrVal;
+    const UmkaType *arrayType = api->umkaGetResultType(params, result); 
+
+    api->umkaMakeDynArray(umka, array, arrayType, n);
+
+    for (int i = 0; i < n; i++)
+        array->data[i] = i * i;
 }
 ```
