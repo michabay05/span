@@ -1,36 +1,27 @@
 import "std.um";
 
-type Vec2 = struct { x, y: real };
+type Vec2 = struct { x, y: real32 };
 type Color = struct { r, g, b, a: uint8 };
 type Id = int16;
 
-fn rect(pos: Vec2 = Vec2{0, 0}, size: Vec2 = Vec2{1, 1},
-    color: Color = Color{255, 255, 255, 255}): Id;
-fn text(s: str, pos: Vec2 = Vec2{0, 0}, font_size: real32 = 1.0,
-    color: Color = Color{255, 255, 255, 255}): Id;
+type Rect = struct {
+    id: Id;
+    position, size: Vec2;
+    color: Color
+};
 
-fn axes(center: Vec2 = Vec2{0, 0}, xmin: real = -3.0, xmax: real = 3.0,
-    ymin: real = -3.0, ymax: real = 3.0): Id;
-fn curve(axes_id: Id, pts: []Vec2): Id;
-fn plot_curve(axes_id: Id, func: fn(x: real): real, samples: int32 = 75): Id {
-    var pts: []Vec2;
-    dx := 6.0 / real(samples);
-    for x := real(-3); x <= real(3); x += dx {
-        pt := Vec2{x, func(x)};
-        pts = append(pts, pt);
-    }
-
-    return curve(axes_id, pts);
+ObjInterface = interface {
+    get_kind(): ObjKind
 }
-fn typst(s: str, font_size: real = 1.0, pos: Vec2 = Vec2{0, 0},
-    color: Color = Color{255, 255, 255, 255}): Id;
 
-fn get_camera(): Id;
+fn (r: ^Rect) set_position(p: Vec2) {
+    r.position = p;
+}
 
-fn fade_in(id: Id, delay: real = 0.0): void;
-fn fade_out(id: Id, delay: real = 0.0): void;
-fn move(id: Id, pos: Vec2, delay: real = 0.0): void;
-fn wait(): void;
-fn play(duration: real = 1.0): void;
+fn (r: ^Rect) set_size(s: Vec2) {
+    r.size = s;
+}
 
-fn enable(id: Id): void;
+fn (r: ^Rect) set_color(c: Color) {
+    r.color = c;
+}

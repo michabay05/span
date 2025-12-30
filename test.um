@@ -1,27 +1,80 @@
-fn f(x: real): real {
-    return x*x;
+import "std.um"
+
+type Vec2 = struct { x, y: real32 };
+type Color = struct { r, g, b, a: uint8 };
+type Id = int16;
+
+type ObjKind = enum {
+    Rect;
+    Text
+};
+
+type ObjInterface = interface {
+    kind(): ObjKind;
 }
 
-fn sequence(): void {
-    // ======== Setup ========
-    a := axes(Vec2{0, -0.8});
-    c := plot_curve(a, f);
-    t := typst("y = x^2", 15, Vec2{0, 4});
-    cam := get_camera()
+type Rect = struct {
+    id: Id;
+    position, size: Vec2;
+    color: Color
+};
 
-    enable(a);
-    enable(c);
-    enable(t);
+fn (r: ^Rect) set_position(p: Vec2) {
+    r.position = p;
+}
 
-    wait();
-    play();
+fn (r: ^Rect) set_size(s: Vec2) {
+    r.size = s;
+}
 
-    move(c, Vec2{0, 3});
-    play(2);
+fn (r: ^Rect) set_color(c: Color) {
+    r.color = c;
+}
 
-    move(cam, Vec2{13, 0});
-    play(2);
+fn (r: ^Rect) kind(): ObjKind {
+    return ObjKind.Rect;
+}
 
-    fade_in(cam);
-    play(2);
+type Text = struct {
+    id: Id;
+    text: str;
+    position: Vec2;
+    font_size: real32;
+    color: Color;
+};
+
+fn (tx: ^Text) kind(): ObjKind {
+    return ObjKind.Text;
+}
+
+// NOTE: Pass a pointer to the object here
+fn add_obj(obj: ObjInterface) {
+    switch obj.kind() {
+        case ObjKind.Rect: {
+            r := ^Rect(obj);
+            r.id = 10;
+        }
+
+        case ObjKind.Text: {
+            tx := ^Text(obj);
+            tx.id = 12;
+        };
+
+        default: {
+            s := sprintf("Unknown type: %v", obj.kind());
+            std::assert(false, s);
+        }
+    }
+}
+
+fn main() {
+    r := Rect{}
+    r.set_color(Color{255, 20, 255, 255});
+    add_obj(&r);
+    printf("%v\n", r);
+
+    tx := Text{}
+    tx.text = "Hello, world";
+    add_obj(&tx);
+    printf("%v\n", tx);
 }
