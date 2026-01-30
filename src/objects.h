@@ -14,8 +14,8 @@ typedef struct {
 } FadeData;
 
 typedef struct {
-    DVector2 start;
-    DVector2 end;
+    Vector2 start;
+    Vector2 end;
 } MoveData;
 
 typedef struct {
@@ -36,14 +36,14 @@ typedef struct {
 SP_STRUCT_ARR(TaskList, Task);
 
 typedef struct {
-    DVector2 position;
-    DVector2 size;
+    Vector2 position;
+    Vector2 size;
     Color color;
 } Rect;
 
 typedef struct {
-    const char *str;
-    DVector2 position;
+    const char *text;
+    Vector2 position;
     Vector2 norm_coords;
     // NOTE: Instead of storing what font size is in absolute terms (aka. in px),
     // the font size is described in terms of a multiplier. In other words, font
@@ -68,7 +68,7 @@ SP_STRUCT_ARR(PointList, Vector2);
 // for me to do was to make a them a separate object (not sub-object).
 typedef struct {
     Id axes_id;
-    DVector2 offset;
+    Vector2 offset;
     PointList pts;
     Color color;
 } Curve;
@@ -76,16 +76,19 @@ typedef struct {
 typedef struct {
     const char *text;
     f32 font_factor;
-    DVector2 position;
+    Vector2 position;
     Color color;
     Texture texture;
 } Typst;
 
 typedef struct {
-    DVector2 target;
+    Vector2 target;
     Camera2D rl_cam;
 } SPCamera;
 
+// TODO: To avoid potential mismatches between the C and umka object kinds,
+// have C generate the list of enums as part of the setup process might make
+// more sense as opposed to have to manually keeping track.
 typedef enum {
     OK_RECT,
     OK_TEXT,
@@ -116,15 +119,15 @@ typedef enum {
 } EaseMode;
 
 
-Obj spo_camera(DVector2 pos);
-Obj spo_rect(DVector2 pos, DVector2 size, Color color);
-Obj spo_text(const char *str, DVector2 pos, f32 font_factor, Color color);
+Obj spo_camera(Vector2 pos);
+Obj spo_rect(Vector2 pos, Vector2 size, Color color);
+Obj spo_text(const char *str, Vector2 pos, f32 font_factor, Color color);
 Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax);
 Vector2 spo_curve_plot(const Axes *const axes, Vector2 pt);
 Obj spo_curve(Id axes_id, UmkaCurvePts u_pts);
-Obj spo_typst(const char *text, f32 font_factor, DVector2 pos, Color color);
+Obj spo_typst(const char *text, f32 font_factor, Vector2 pos, Color color);
 bool spo_typst_compile(Typst *typ);
-void spo_get_pos(Obj *obj, DVector2 **pos);
+void spo_get_pos(Obj *obj, Vector2 **pos);
 void spo_get_color(Obj *obj, Color **color);
 void spo_render(Obj obj);
 Action spo_enable(Id obj_id);

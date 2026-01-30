@@ -3,7 +3,7 @@
 
 #include "umka_api.h"
 
-typedef UmkaDynArray(DVector2) UmkaCurvePts;
+typedef UmkaDynArray(Vector2) UmkaCurvePts;
 typedef struct {
     const char *name;
     UmkaExternFunc func;
@@ -11,10 +11,10 @@ typedef struct {
 
 bool spu_init(const char *filename);
 void spu_run_sequence(void);
-void spu_preamble_count_lines(const char *preamble);
+void spu_preamble_count_lines(Nob_String_Builder sb);
 void spu_print_err(void);
 bool spu_call_fn(const char *fn_name, UmkaStackSlot **slot, size_t storage_bytes);
-bool spu_content_w_preamble(const char *filename, char **content);
+bool spu_content_w_preamble(const char *filename, Nob_String_Builder *sb);
 void spuo_rect(UmkaStackSlot *p, UmkaStackSlot *r);
 void spuo_text(UmkaStackSlot *p, UmkaStackSlot *r);
 void spuo_axes(UmkaStackSlot *p, UmkaStackSlot *r);

@@ -1,4 +1,4 @@
-Obj spo_camera(DVector2 pos)
+Obj spo_camera(Vector2 pos)
 {
     // NOTE: Default camera setup
     Camera2D cam = {
@@ -22,7 +22,7 @@ Obj spo_camera(DVector2 pos)
     };
 }
 
-Obj spo_rect(DVector2 pos, DVector2 size, Color color)
+Obj spo_rect(Vector2 pos, Vector2 size, Color color)
 {
     return (Obj) {
         .id = spc_next_id(),
@@ -38,7 +38,7 @@ Obj spo_rect(DVector2 pos, DVector2 size, Color color)
     };
 }
 
-Obj spo_text(const char *str, DVector2 pos, f32 font_factor, Color color)
+Obj spo_text(const char *str, Vector2 pos, f32 font_factor, Color color)
 {
     return (Obj) {
         .id = spc_next_id(),
@@ -46,7 +46,7 @@ Obj spo_text(const char *str, DVector2 pos, f32 font_factor, Color color)
         .enabled = false,
         .as = {
             .text = {
-                .str = arena_strdup(&arena, str),
+                .text = arena_strdup(&arena, str),
                 .position = pos,
                 // NOTE: I arbitrarily divided this by 2.f...it looked nicer
                 .font_factor = font_factor / 2.f,
@@ -117,7 +117,7 @@ Obj spo_axes(Vector2 center, f32 xmin, f32 xmax, f32 ymin, f32 ymax)
 
 Vector2 spo_curve_plot(const Axes *const axes, Vector2 pt)
 {
-    SP_ASSERT(axes->xmin <= axes->xmax);
+    NOB_ASSERT(axes->xmin <= axes->xmax);
 
     pt.y *= -1.f;
     Vector2 new_pt = Vector2Add(
@@ -131,7 +131,7 @@ Obj spo_curve(Id axes_id, UmkaCurvePts u_pts)
 {
     Obj *axes_obj = NULL;
     spc_get_obj(axes_id, &axes_obj);
-    SP_ASSERT(axes_obj->kind == OK_AXES);
+    NOB_ASSERT(axes_obj->kind == OK_AXES);
     const Axes *axes = &axes_obj->as.axes;
 
     PointList pts = {0};
@@ -155,7 +155,7 @@ Obj spo_curve(Id axes_id, UmkaCurvePts u_pts)
     };
 }
 
-Obj spo_typst(const char *text, f32 font_factor, DVector2 pos, Color color)
+Obj spo_typst(const char *text, f32 font_factor, Vector2 pos, Color color)
 {
     Typst typ = {
         .text = text,
@@ -205,7 +205,7 @@ bool spo_typst_compile(Typst *typ)
     return true;
 }
 
-void spo_get_pos(Obj *obj, DVector2 **pos)
+void spo_get_pos(Obj *obj, Vector2 **pos)
 {
     switch (obj->kind) {
         case OK_RECT: {
@@ -229,7 +229,7 @@ void spo_get_pos(Obj *obj, DVector2 **pos)
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown kind of object: %d", obj->kind);
+            NOB_UNREACHABLEF("Unknown kind of object: %d", obj->kind);
         } break;
     }
 }
@@ -251,11 +251,11 @@ void spo_get_color(Obj *obj, Color **color)
 
         case OK_CAMERA: {
             printf("WARN: A camera does not have a color; ignoring it.\n");
-            SP_ASSERT(false);
+            NOB_ASSERT(false);
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown kind of object: %d", obj->kind);
+            NOB_UNREACHABLEF("Unknown kind of object: %d", obj->kind);
         } break;
     }
 }
@@ -267,8 +267,8 @@ void spo_render(Obj obj)
     switch (obj.kind) {
         case OK_RECT: {
             Rect r = obj.as.rect;
-            Vector2 pos = spv_denorm_coords(spv_dtof(r.position));
-            Vector2 size = spv_denorm_coords(spv_dtof(r.size));
+            Vector2 pos = spv_denorm_coords(r.position);
+            Vector2 size = spv_denorm_coords(r.size);
             pos = Vector2Subtract(pos, Vector2Scale(size, 0.5));
 
             DrawRectangleV(pos, size, r.color);
@@ -279,12 +279,12 @@ void spo_render(Obj obj)
             Font font = GetFontDefault();
             f32 spacing = 2.0f;
 
-            Vector2 pos = spv_denorm_coords(spv_dtof(t.position));
+            Vector2 pos = spv_denorm_coords(t.position);
             f32 font_size = t.font_factor * ctx.res.y;
-            Vector2 text_dim = MeasureTextEx(font, t.str, font_size, spacing);
+            Vector2 text_dim = MeasureTextEx(font, t.text, font_size, spacing);
             pos = Vector2Subtract(pos, Vector2Scale(text_dim, 0.5));
 
-            DrawTextEx(font, t.str, pos, font_size, spacing, t.color);
+            DrawTextEx(font, t.text, pos, font_size, spacing, t.color);
         } break;
 
         case OK_AXES: {
@@ -316,8 +316,8 @@ void spo_render(Obj obj)
 
         case OK_CURVE: {
             Curve c = obj.as.curve;
-            Vector2 offset = spv_denorm_coords(spv_dtof(c.offset));
-            SP_ASSERT(c.pts.count >= 2);
+            Vector2 offset = spv_denorm_coords(c.offset);
+            NOB_ASSERT(c.pts.count >= 2);
             f32 thickness = 4.f;
 
             for (int i = 1; i < c.pts.count; i++) {
@@ -340,7 +340,7 @@ void spo_render(Obj obj)
             Typst t = obj.as.typst;
             IVector2 tex_dim = {t.texture.width, t.texture.height};
             Vector2 pos = Vector2Subtract(
-                spv_denorm_coords(spv_dtof(t.position)),
+                spv_denorm_coords(t.position),
                 Vector2Scale(spv_itof(tex_dim), 0.5));
             DrawTextureV(t.texture, pos, t.color);
         } break;
@@ -349,7 +349,7 @@ void spo_render(Obj obj)
         case OK_CAMERA: break;
 
         default: {
-            SP_UNREACHABLEF("Unknown kind of object: %d", obj.kind);
+            NOB_UNREACHABLEF("Unknown kind of object: %d", obj.kind);
         } break;
     }
 }
@@ -376,7 +376,7 @@ void spa_interp(Action action, void **value, f32 factor)
         } break;
 
         case AK_Move: {
-            DVector2 *v = *(DVector2**)value;
+            Vector2 *v = *(Vector2**)value;
             MoveData args = action.args.move;
             *v = spv_ftod(
                 Vector2Lerp(spv_dtof(args.start), spv_dtof(args.end), factor)
@@ -384,7 +384,7 @@ void spa_interp(Action action, void **value, f32 factor)
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown kind of action: %d", action.kind);
+            NOB_UNREACHABLEF("Unknown kind of action: %d", action.kind);
         } break;
     }
 }
@@ -399,6 +399,6 @@ f32 sp_easing(f32 t, f32 duration)
             return -0.5*cosf(PI / duration * t) + 0.5;
 
         default:
-            SP_UNREACHABLEF("Unknown mode of easing: %d", ctx.easing);
+            NOB_UNREACHABLEF("Unknown mode of easing: %d", ctx.easing);
     }
 }

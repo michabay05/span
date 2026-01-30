@@ -1,80 +1,18 @@
-import "std.um"
-
-type Vec2 = struct { x, y: real32 };
-type Color = struct { r, g, b, a: uint8 };
-type Id = int16;
-
-type ObjKind = enum {
-    Rect;
-    Text
-};
-
-type ObjInterface = interface {
-    kind(): ObjKind;
-}
-
-type Rect = struct {
-    id: Id;
-    position, size: Vec2;
-    color: Color
-};
-
-fn (r: ^Rect) set_position(p: Vec2) {
-    r.position = p;
-}
-
-fn (r: ^Rect) set_size(s: Vec2) {
-    r.size = s;
-}
-
-fn (r: ^Rect) set_color(c: Color) {
-    r.color = c;
-}
-
-fn (r: ^Rect) kind(): ObjKind {
-    return ObjKind.Rect;
-}
-
-type Text = struct {
-    id: Id;
-    text: str;
-    position: Vec2;
-    font_size: real32;
-    color: Color;
-};
-
-fn (tx: ^Text) kind(): ObjKind {
-    return ObjKind.Text;
-}
-
-// NOTE: Pass a pointer to the object here
-fn add_obj(obj: ObjInterface) {
-    switch obj.kind() {
-        case ObjKind.Rect: {
-            r := ^Rect(obj);
-            r.id = 10;
-        }
-
-        case ObjKind.Text: {
-            tx := ^Text(obj);
-            tx.id = 12;
-        };
-
-        default: {
-            s := sprintf("Unknown type: %v", obj.kind());
-            std::assert(false, s);
-        }
-    }
-}
-
-fn main() {
+fn sequence() {
     r := Rect{}
-    r.set_color(Color{255, 20, 255, 255});
+    r.set_position(Vec2{0, 0.6});
+    // r.set_size(Vec2{0.1, 0.1});
+    // r.set_color(Color{255, 20, 255, 255});
     add_obj(&r);
     printf("%v\n", r);
 
-    tx := Text{}
-    tx.text = "Hello, world";
-    add_obj(&tx);
-    printf("%v\n", tx);
+    // tx := Text{}
+    // tx.position.y = 0.2;
+    // tx.text = "Hello, world";
+    // add_obj(&tx);
+    // printf("%v\n", tx);
+
+    fade_in(r.id);
+    // fade_in(tx.id);
+    play(2);
 }

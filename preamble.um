@@ -2,7 +2,19 @@ import "std.um";
 
 type Vec2 = struct { x, y: real32 };
 type Color = struct { r, g, b, a: uint8 };
-type Id = int16;
+type Id = uint16;
+
+type ObjKind = enum (Id) {
+    Rect;
+    Text
+};
+
+fn create_obj(kind: ObjKind, obj: ^void): Id;
+fn update_obj(id: Id, obj: ^void): void;
+
+type ObjInterface = interface {
+    kind(): ObjKind;
+}
 
 type Rect = struct {
     id: Id;
@@ -10,18 +22,52 @@ type Rect = struct {
     color: Color
 };
 
-ObjInterface = interface {
-    get_kind(): ObjKind
+fn (r: ^Rect) kind(): ObjKind {
+    return ObjKind.Rect;
 }
 
 fn (r: ^Rect) set_position(p: Vec2) {
     r.position = p;
+    update_obj(r.id, ^void(r));
 }
 
-fn (r: ^Rect) set_size(s: Vec2) {
-    r.size = s;
+type Text = struct {
+    id: Id;
+    text: str;
+    position: Vec2;
+    font_size: real32;
+    color: Color;
+};
+
+fn (tx: ^Text) kind(): ObjKind {
+    return ObjKind.Text;
 }
 
-fn (r: ^Rect) set_color(c: Color) {
-    r.color = c;
+
+// NOTE: Pass a pointer to the object here
+fn add_obj(obj: ObjInterface) {
+    switch obj.kind() {
+        case ObjKind.Rect: {
+            r := ^Rect(obj);
+            r.id = create_obj(ObjKind.Rect, ^void(r));
+        }
+
+        case ObjKind.Text: {
+            tx := ^Text(obj);
+            tx.id = create_obj(ObjKind.Text, ^void(tx));
+        }
+
+        default: {
+            s := sprintf("Unknown type: %v", obj.kind());
+            std::assert(false, s);
+        }
+    }
 }
+
+fn fade_in(id: Id, delay: real = 0.0): void;
+// fn fade_out(id: Id, delay: real = 0.0): void;
+// fn move(id: Id, pos: Vec2, delay: real = 0.0): void;
+// fn wait(): void;
+fn play(duration: real = 1.0): void;
+
+// fn enable(id: Id): void;

@@ -57,10 +57,10 @@ bool spc_get_obj(Id id, Obj **obj);
 void spc_reset(void);
 // NOTE: For tasks, clear does not mean clear the list and free the memory.
 void spc_clear_for_recomp(void);
-Vector2 spv_dtof(DVector2 dv);
-DVector2 spv_ftod(Vector2 v);
+Vector2 spv_dtof(Vector2 dv);
+Vector2 spv_ftod(Vector2 v);
 Vector2 spv_itof(IVector2 iv);
-DVector2 spv_lerpd(DVector2 start, DVector2 end, f64 factor);
+Vector2 spv_lerpd(Vector2 start, Vector2 end, f64 factor);
 Vector2 spv_denorm_coords(Vector2 v);
 
 #endif // _CONTEXT_H_

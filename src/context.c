@@ -33,7 +33,7 @@ void spc_renderer_init(RenderMode mode)
 
             if (pres.x < pres.y) {
                 // The horz length is smaller (Portrait)
-                SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
+                NOB_TODO("Portrait mode is not implemented yet!");
             }
         } break;
 
@@ -43,11 +43,11 @@ void spc_renderer_init(RenderMode mode)
             // TODO: This is a temporary limitation; fix this
             f32 p_aspect_ratio = (f32)pres.x / (f32)pres.y;
             f32 v_aspect_ratio = (f32)ctx.res.x / (f32)ctx.res.y;
-            SP_ASSERT(p_aspect_ratio == v_aspect_ratio);
+            NOB_ASSERT(p_aspect_ratio == v_aspect_ratio);
 
             if (ctx.res.x < ctx.res.y) {
                 // The horz length is smaller (Portrait)
-                SP_UNIMPLEMENTED("Portrait mode is not implemented yet!");
+                NOB_TODO("Portrait mode is not implemented yet!");
             }
 
             ctx.rtex = LoadRenderTexture(ctx.res.x, ctx.res.y);
@@ -57,7 +57,7 @@ void spc_renderer_init(RenderMode mode)
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown render mode: %d", mode);
+            NOB_UNREACHABLEF("Unknown render mode: %d", mode);
         } break;
     }
     ctx.render_mode = mode;
@@ -115,7 +115,7 @@ void spc_update(f32 dt)
         switch (a.kind) {
             case AK_Enable: {
                 Obj *obj = NULL;
-                SP_ASSERT(spc_get_obj(a.obj_id, &obj));
+                NOB_ASSERT(spc_get_obj(a.obj_id, &obj));
                 obj->enabled = true;
             } break;
 
@@ -123,11 +123,11 @@ void spc_update(f32 dt)
 
             case AK_Move: {
                 Obj *obj = {0};
-                DVector2 *pos = NULL;
-                SP_ASSERT(spc_get_obj(a.obj_id, &obj));
-                SP_ASSERT(obj->enabled);
+                Vector2 *pos = NULL;
+                NOB_ASSERT(spc_get_obj(a.obj_id, &obj));
+                NOB_ASSERT(obj->enabled);
                 spo_get_pos(obj, &pos);
-                SP_ASSERT(pos != NULL);
+                NOB_ASSERT(pos != NULL);
 
                 spa_interp(a, (void*)&pos, factor);
             } break;
@@ -135,16 +135,16 @@ void spc_update(f32 dt)
             case AK_Fade: {
                 Obj *obj = {0};
                 Color *color = NULL;
-                SP_ASSERT(spc_get_obj(a.obj_id, &obj));
-                SP_ASSERT(obj->enabled);
+                NOB_ASSERT(spc_get_obj(a.obj_id, &obj));
+                NOB_ASSERT(obj->enabled);
                 spo_get_color(obj, &color);
-                SP_ASSERT(color != NULL);
+                NOB_ASSERT(color != NULL);
 
                 spa_interp(a, (void*)&color, factor);
             } break;
 
             default: {
-                SP_UNREACHABLEF("Unknown kind: %d", a.kind);
+                NOB_UNREACHABLEF("Unknown kind: %d", a.kind);
             } break;
         }
     }
@@ -156,16 +156,16 @@ static void spc__main_render(void)
 {
     // NOTE: The first object in the list should always be camera
     Obj obj = ctx.objs.items[0];
-    SP_ASSERT(obj.kind == OK_CAMERA);
+    NOB_ASSERT(obj.kind == OK_CAMERA);
     Camera2D cam = obj.as.cam.rl_cam;
-    cam.target = spv_denorm_coords(spv_dtof(obj.as.cam.target));
+    cam.target = spv_denorm_coords(obj.as.cam.target);
 
     ClearBackground(BLACK);
 
     BeginMode2D(cam); {
         for (int i = 0; i < ctx.objs.count; i++) {
             Obj *obj = NULL;
-            SP_ASSERT(spc_get_obj(i, &obj));
+            NOB_ASSERT(spc_get_obj(i, &obj));
             spo_render(*obj);
         }
     } EndMode2D();
@@ -240,7 +240,7 @@ void spc_render(void)
         } break;
 
         default: {
-            SP_UNREACHABLEF("Unknown render mode: %d", ctx.render_mode);
+            NOB_UNREACHABLEF("Unknown render mode: %d", ctx.render_mode);
         } break;
     }
 }
@@ -332,7 +332,7 @@ void spc_clear_for_recomp(void)
     }
 }
 
-Vector2 spv_dtof(DVector2 dv)
+Vector2 spv_dtof(Vector2 dv)
 {
     return (Vector2){
         .x = (f32)dv.x,
@@ -340,9 +340,9 @@ Vector2 spv_dtof(DVector2 dv)
     };
 }
 
-DVector2 spv_ftod(Vector2 v)
+Vector2 spv_ftod(Vector2 v)
 {
-    return (DVector2){
+    return (Vector2){
         .x = (f64)v.x,
         .y = (f64)v.y,
     };
@@ -356,12 +356,12 @@ Vector2 spv_itof(IVector2 iv)
     };
 }
 
-DVector2 spv_lerpd(DVector2 start, DVector2 end, f64 factor)
+Vector2 spv_lerpd(Vector2 start, Vector2 end, f64 factor)
 {
     if (factor < 0.0) factor = 0.0;
     if (factor > 1.0) factor = 1.0;
 
-    return (DVector2) {
+    return (Vector2) {
         .x = start.x + (end.x - start.x)*factor,
         .y = start.y + (end.y - start.y)*factor,
     };

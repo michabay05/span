@@ -1,7 +1,95 @@
+#include "src/context.h"
+typedef struct {
+    Id id;
+    Vector2 position, size;
+    Color color;
+} UmkaRect;
+
+typedef struct {
+    Id id;
+    const char *text;
+    Vector2 position;
+    f32 font_size;
+    Color color;
+} UmkaText;
+
+void spu_create_obj(UmkaStackSlot *p, UmkaStackSlot *r)
+{
+    ObjKind kind = *(ObjKind *)umkaGetParam(p, 0);
+    void *obj = umkaGetParam(p, 1)->ptrVal;
+
+    Id id = -1;
+    switch (kind) {
+        case OK_RECT: {
+            UmkaRect *ur = obj;
+            Obj rect = spo_rect(ur->position, ur->size, ur->color);
+            id = rect.id;
+            spc_add_obj(rect);
+        } break;
+
+        case OK_TEXT: {
+            UmkaText *ut = obj;
+            Obj text = spo_text(ut->text, ut->position, ut->font_size, ut->color);
+            id = text.id;
+            spc_add_obj(text);
+        } break;
+
+        default: NOB_UNREACHABLEF("Received: %d", kind);
+    }
+
+    umkaGetResult(p, r)->intVal = id;
+}
+
+Rect spu_convert_rect(UmkaRect ur)
+{
+    return (Rect) {
+        .position = ur.position,
+        .size = ur.size,
+        .color = ur.color,
+    };
+}
+
+Text spu_convert_text(UmkaText ut)
+{
+    return (Text) {
+        .position = ut.position,
+        .font_factor = ut.font_size,
+        .text = ut.text,
+        .color = ut.color,
+    };
+}
+
+void spu_update_obj(UmkaStackSlot *p, UmkaStackSlot *r)
+{
+    NOB_UNUSED(r);
+    Id id = *(Id *)umkaGetParam(p, 0);
+    printf("id = %d\n", id);
+    void *umka_obj = umkaGetParam(p, 1)->ptrVal;
+    Obj *obj = NULL;
+    if (!spc_get_obj(id, &obj)) {
+        // TODO: add some log here
+        return;
+    }
+
+    switch (obj->kind) {
+        case OK_RECT: {
+            UmkaRect *ur = umka_obj;
+            obj->as.rect = spu_convert_rect(*ur);
+        } break;
+
+        case OK_TEXT: {
+            UmkaText *ut = umka_obj;
+            obj->as.text = spu_convert_text(*ut);
+        } break;
+
+        default: NOB_UNREACHABLEF("Received: %d", obj->kind);
+    }
+}
+
 bool spu_init(const char *filename)
 {
-    char *content = NULL;
-    bool ok = spu_content_w_preamble(filename, &content);
+    Nob_String_Builder sb = {0};
+    bool ok = spu_content_w_preamble(filename, &sb);
     if (!ok) {
         return false;
     }
@@ -9,30 +97,20 @@ bool spu_init(const char *filename)
     if (ctx.umka == NULL) {
         ctx.umka = umkaAlloc();
     }
-    ok = umkaInit(ctx.umka, NULL, content, 1024 * 1024, NULL, 0, NULL, false, false, NULL);
+    ok = umkaInit(ctx.umka, NULL, sb.items, 1024 * 1024, NULL, 0, NULL, false, false, NULL);
     if (!ok) {
         spu_print_err();
         return false;
     }
 
     UmkaFunc fns[] = {
-        (UmkaFunc){.name = "rect", .func = &spuo_rect},
-        (UmkaFunc){.name = "text", .func = &spuo_text},
-        (UmkaFunc){.name = "axes", .func = &spuo_axes},
-        (UmkaFunc){.name = "curve", .func = &spuo_curve},
-        (UmkaFunc){.name = "typst", .func = &spuo_typst},
-
-        (UmkaFunc){.name = "get_camera", .func = &spuo_get_camera},
+        (UmkaFunc){.name = "create_obj", .func = &spu_create_obj},
+        (UmkaFunc){.name = "update_obj", .func = &spu_update_obj},
 
         (UmkaFunc){.name = "fade_in", .func = &spu_fade_in},
-        (UmkaFunc){.name = "fade_out", .func = &spu_fade_out},
-        (UmkaFunc){.name = "move", .func = &spu_move},
-        (UmkaFunc){.name = "wait", .func = &spu_wait},
         (UmkaFunc){.name = "play", .func = &spu_play},
-
-        (UmkaFunc){.name = "enable", .func = &spuo_enable},
     };
-    for (int i = 0; i < SP_LEN(fns); i++) {
+    for (size_t i = 0; i < NOB_ARRAY_LEN(fns); i++) {
         ok = umkaAddFunc(ctx.umka, fns[i].name, fns[i].func);
         if (!ok) {
             spu_print_err();
@@ -48,17 +126,16 @@ bool spu_init(const char *filename)
     return true;
 }
 
-
 void spu_run_sequence(void)
 {
     spu_call_fn("sequence", NULL, 0);
 }
 
-void spu_preamble_count_lines(const char *preamble)
+void spu_preamble_count_lines(Nob_String_Builder sb)
 {
     int count = 1;
-    for (int i = 0; i < (int)strlen(preamble); i++) {
-        if (preamble[i] == '\n') count++;
+    for (int i = 0; i < (int)sb.count; i++) {
+        if (sb.items[i] == '\n') count++;
     }
     ctx.preamble_lines = count;
 }
@@ -99,48 +176,24 @@ bool spu_call_fn(const char *fn_name, UmkaStackSlot **slot, size_t storage_bytes
     return true;
 }
 
-bool spu_content_w_preamble(const char *filename, char **content)
+bool spu_content_w_preamble(const char *filename, Nob_String_Builder *sb)
 {
-    char preamble[2*1024] = {0};
+    *sb = (Nob_String_Builder){0};
+    nob_read_entire_file("preamble.um", sb);
+    spu_preamble_count_lines(*sb);
 
-    FILE *fp = fopen("preamble.um", "r");
-    if (fp == NULL) {
-        fprintf(stderr, "[ERROR] Could not find '%s'\n", filename);
-        return false;
-    }
+    Nob_String_Builder content_sb = {0};
+    nob_read_entire_file(filename, &content_sb);
 
-    // Source: https://stackoverflow.com/questions/238603/how-can-i-get-a-files-size-in-c
-    fseek(fp, 0L, SEEK_END);
-    size_t fsz = ftell(fp);
-    rewind(fp);
-    fread(preamble, fsz, 1, fp);
-    preamble[strlen(preamble)] = '\0';
-    fclose(fp);
-    spu_preamble_count_lines(preamble);
-
-    fp = fopen(filename, "r");
-    if (fp == NULL) {
-        fprintf(stderr, "[ERROR] Could not find '%s'\n", filename);
-        return false;
-    }
-
-    fseek(fp, 0L, SEEK_END);
-    fsz = ftell(fp);
-    rewind(fp);
-
-    char *file_content = arena_alloc(&arena, fsz + 1);
-    fread(file_content, fsz, 1, fp);
-    file_content[fsz] = '\0';
-    fclose(fp);
-
-    *content = arena_sprintf(&arena, "%s\n%s", preamble, file_content);
+    nob_sb_appendf(sb, "\n%s", content_sb.items);
     return true;
 }
 
+#if 0
 void spuo_rect(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    DVector2 pos = *(DVector2 *)umkaGetParam(p, 0);
-    DVector2 size = *(DVector2 *)umkaGetParam(p, 1);
+    Vector2 pos = *(Vector2 *)umkaGetParam(p, 0);
+    Vector2 size = *(Vector2 *)umkaGetParam(p, 1);
     Color color = *(Color *)umkaGetParam(p, 2);
 
     Obj rect = spo_rect(pos, size, color);
@@ -152,7 +205,7 @@ void spuo_rect(UmkaStackSlot *p, UmkaStackSlot *r)
 void spuo_text(UmkaStackSlot *p, UmkaStackSlot *r)
 {
     const unsigned char *text_str = (const unsigned char *)(umkaGetParam(p, 0)->ptrVal);
-    DVector2 pos = *(DVector2 *)umkaGetParam(p, 1);
+    Vector2 pos = *(Vector2 *)umkaGetParam(p, 1);
     f32 font_size = *(f32 *)umkaGetParam(p, 2);
     Color color = *(Color *)umkaGetParam(p, 3);
 
@@ -164,7 +217,7 @@ void spuo_text(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spuo_axes(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    DVector2 center = *(DVector2 *)umkaGetParam(p, 0);
+    Vector2 center = *(Vector2 *)umkaGetParam(p, 0);
     f64 xmin = *(f64 *)umkaGetParam(p, 1);
     f64 xmax = *(f64 *)umkaGetParam(p, 2);
     f64 ymin = *(f64 *)umkaGetParam(p, 3);
@@ -191,7 +244,7 @@ void spuo_typst(UmkaStackSlot *p, UmkaStackSlot *r)
 {
     const unsigned char *text = (const unsigned char *)(umkaGetParam(p, 0)->ptrVal);
     f32 font_size = (f32)umkaGetParam(p, 1)->realVal;
-    DVector2 pos = *(DVector2 *)umkaGetParam(p, 2);
+    Vector2 pos = *(Vector2 *)umkaGetParam(p, 2);
     Color color = *(Color *)umkaGetParam(p, 3);
 
     Obj typst = spo_typst((const char *)text, font_size, pos, color);
@@ -202,17 +255,18 @@ void spuo_typst(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spuo_get_camera(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(p);
-    SP_UNUSED(r);
+    NOB_UNUSED(p);
+    NOB_UNUSED(r);
 
     Id cam_id = 0;
-    SP_ASSERT(ctx.objs.items[cam_id].kind == OK_CAMERA);
+    NOB_ASSERT(ctx.objs.items[cam_id].kind == OK_CAMERA);
     umkaGetResult(p, r)->intVal = cam_id;
 }
+#endif
 
 void spuo_enable(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(r);
+    NOB_UNUSED(r);
     Id obj_id = *(Id *)umkaGetParam(p, 0);
 
     spc_add_action(spo_enable(obj_id));
@@ -220,14 +274,14 @@ void spuo_enable(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spu_fade_in(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(r);
+    NOB_UNUSED(r);
 
     Id obj_id = *(Id *)umkaGetParam(p, 0);
     f64 delay = *(f64 *)umkaGetParam(p, 1);
 
     Obj *obj = NULL;
     Color *current = NULL;
-    SP_ASSERT(spc_get_obj(obj_id, &obj));
+    NOB_ASSERT(spc_get_obj(obj_id, &obj));
     spo_get_color(obj, &current);
 
     FadeData fade = {
@@ -254,14 +308,14 @@ void spu_fade_in(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spu_fade_out(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(r);
+    NOB_UNUSED(r);
 
     Id obj_id = *(Id *)umkaGetParam(p, 0);
     f64 delay = *(f64 *)umkaGetParam(p, 1);
 
     Obj *obj = NULL;
     Color *current = NULL;
-    SP_ASSERT(spc_get_obj(obj_id, &obj));
+    NOB_ASSERT(spc_get_obj(obj_id, &obj));
     spo_get_color(obj, &current);
 
     FadeData fade = {
@@ -288,8 +342,8 @@ void spu_fade_out(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spu_wait(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(p);
-    SP_UNUSED(r);
+    NOB_UNUSED(p);
+    NOB_UNUSED(r);
     Action action = {
         .obj_id = SCENE_OBJ,
         .delay = 0.0,
@@ -301,15 +355,15 @@ void spu_wait(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spu_move(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(r);
+    NOB_UNUSED(r);
 
     Id obj_id = *(Id *)umkaGetParam(p, 0);
-    DVector2 pos = *(DVector2 *)umkaGetParam(p, 1);
+    Vector2 pos = *(Vector2 *)umkaGetParam(p, 1);
     f64 delay = *(f64 *)umkaGetParam(p, 2);
 
     Obj *obj = NULL;
-    DVector2 *current = NULL;
-    SP_ASSERT(spc_get_obj(obj_id, &obj));
+    Vector2 *current = NULL;
+    NOB_ASSERT(spc_get_obj(obj_id, &obj));
     spo_get_pos(obj, &current);
 
     MoveData move = {
@@ -336,7 +390,7 @@ void spu_move(UmkaStackSlot *p, UmkaStackSlot *r)
 
 void spu_play(UmkaStackSlot *p, UmkaStackSlot *r)
 {
-    SP_UNUSED(r);
+    NOB_UNUSED(r);
     f64 duration = *(f64 *)umkaGetParam(p, 0);
 
     Task *last = &ctx.tasks.items[ctx.tasks.count - 1];

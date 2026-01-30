@@ -1,7 +1,10 @@
+#include "raylib.h"
+#include "raymath.h"
+
 #define ARENA_IMPLEMENTATION
 #define NOB_IMPLEMENTATION
-
 #include "base.h"
+#include "ffmpeg.h"
 #include "umka.h"
 #include "objects.h"
 #include "context.h"
@@ -48,7 +51,7 @@ int main(void)
         }
 
         if (!ctx.paused) {
-            SP_ASSERT(ctx.dt_mul != 0);
+            NOB_ASSERT(ctx.dt_mul != 0);
             f32 mult = ctx.dt_mul > 0 ? (f32)ctx.dt_mul : 1.0 / (f32)abs(ctx.dt_mul);
             spc_update(GetFrameTime() * mult);
         }
