@@ -1,0 +1,54 @@
+# span - lang
+
+## Constructs
+- Scenes
+    - Composed of objects and actions
+    - Templates
+- Objects
+    - Base types for all primitives and composite objects
+    - Types
+        - Primitives
+        - Composites: user-defined objects composed of primitives
+- Actions
+    - Like void functions that operate over objects
+    - Examples
+        - `translate`
+        - `wait`
+        - `rotate`
+- Units
+    - Absolutes: `px`, `deg`, `rad`, (optional: `prad` aka. pi radians)
+    - Relatives: `%`, `vw`, `vh`
+    - Frame counter: `frame`
+- Primitive types
+    - bool
+    - int
+    - float
+        - Options for low (32-bit) and high (64-bit) precisions
+    - vec2
+    - str
+    - color
+    - group: fixed-size arrays
+    - (optional) list: dynamic arrays
+- Functionality
+    - Constants Literals
+        - length: 0.5vw, 100px
+        - angle : 90deg, 0.5rad, 0.4prad
+        - int   : 123, 543
+        - float : 3.142, 2.718
+        - string: "hello", "james doe", "james-bond"
+    - Variables
+    - Operators
+        - Arithmetic
+        - Logical
+    - Conditionals
+    - Loops
+- Backend
+    - Rendering and visualization via raylib
+    - videogen (instead of codegen) via ffmpeg
+- Visualization features
+    - Restarting a scene
+    - Continuing from a specific point in a scene
+    - Starting on the nth scene
+    - Hot-reloading module
+        - Live code validation
+        - Refresh internal representation of code
