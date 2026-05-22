@@ -1,0 +1,24 @@
+scene Test {
+    prim r1 = rect();
+    color c = red;
+    if position(r1) == [0.5*vw, 0.2*vh] {
+        c = blue;
+    }
+    translate(r1, [0.5*vw, 0.2*vh], 0.5, rate=linear);
+    prim t1 = text("5 in.");
+    rotate(t1, 90deg);
+}
+
+scene NextGreatScene {
+    r1 := rect();
+    c := RED;
+    t1 := text("5 in.");
+    rotate(t1, 90deg);
+    rotate(t1, -0.5prad);
+}
+
+render {
+    setup([1920, 1080], fps=30)
+    Test;
+    AppleIsGoingMad;
+}
