@@ -21,9 +21,9 @@
     - Frame counter: `frame`
 - Primitive types
     - bool
-    - int
     - float
         - Options for low (32-bit) and high (64-bit) precisions
+        - no int because I don't the distinction between an int and float would provide value in this domain.
     - vec2
     - str
     - color
