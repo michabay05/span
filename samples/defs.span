@@ -1,0 +1,3 @@
+c := Circle([0, 0], 2, red);
+t := Text("Hello, world!", [2, 2], green);
+r := Rect([0, 0], [2, 3], blue);

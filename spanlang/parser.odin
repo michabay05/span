@@ -1,0 +1,405 @@
+package spanlang
+
+import "core:fmt"
+import "core:slice"
+import "core:strconv"
+
+Def_Stmt :: struct {
+	name: string,
+	type: string,
+}
+
+Call_Stmt :: struct {
+	name: string,
+}
+
+Expr_Stmt :: struct {
+	expr: ^Expr,
+}
+
+Stmt :: union {
+	Def_Stmt,
+	Call_Stmt,
+	Expr_Stmt,
+}
+
+Operator :: enum {
+	Add,
+	Sub,
+	Multiply,
+	Divide
+}
+Expr :: union {
+	Literal,
+	Binary_Expr,
+}
+Binary_Expr :: struct {
+	op:    Operator,
+	left:  ^Expr,
+	right: ^Expr,
+}
+
+Vector :: [dynamic; 4]f32
+Literal :: union {
+	f32,
+	string,
+	Vector,
+}
+
+parse_program :: proc(tokens: []Token, stmts: ^[dynamic]Stmt) {
+	curr := 0
+
+	for curr < len(tokens) {
+		token, avail := peek_token(tokens, curr)
+		if !avail do break
+
+		#partial switch token.kind {
+		case .Identifier:
+			append(stmts, parse_ident_stmt(tokens, &curr))
+		case:
+			append(stmts, parse_expr_stmt(tokens, &curr))
+		}
+	}
+
+	for stmt in stmts {
+		dump_stmt(stmt)
+	}
+}
+
+parse_ident_stmt :: proc(tokens: []Token, curr: ^int) -> Stmt {
+	ident := consume_token(tokens, curr)
+
+	token, avail := peek_token(tokens, curr^)
+	if !avail do unreachable()
+	consume_token(tokens, curr)
+
+	#partial switch token.kind {
+	case .Colon:
+		def_stmt := Def_Stmt {
+			name = ident.literal,
+			type = "",
+		}
+		parse_def_stmt(tokens, curr, &def_stmt)
+		return def_stmt
+	case .OParen:
+		call_stmt := Call_Stmt {
+			name = ident.literal,
+		}
+		parse_call_stmt(tokens, curr, &call_stmt)
+		return call_stmt
+	case:
+		fmt.eprintfln("TODO: handle this token: (%d) %v", curr, token)
+		unimplemented()
+	}
+}
+
+parse_def_stmt :: proc(tokens: []Token, curr: ^int, stmt: ^Def_Stmt) {
+	// NOTE: Skip until semicolon; set to null for now
+	// TODO: parse type info
+
+	peek_expect(tokens, curr^, .Assign)
+	consume_token(tokens, curr)
+
+	// NOTE: Skip until semicolon
+	// TODO: parse expression
+	for tokens[curr^].kind != .Semicolon {
+		consume_token(tokens, curr)
+	}
+
+	peek_expect(tokens, curr^, .Semicolon)
+	consume_token(tokens, curr)
+}
+
+parse_call_stmt :: proc(tokens: []Token, curr: ^int, stmt: ^Call_Stmt) {
+	// TODO: rework parse expressions
+
+	// NOTE: Skip until semicolon
+	// TODO: parse expression
+	for tokens[curr^].kind != .CParen {
+		consume_token(tokens, curr)
+	}
+
+	peek_expect(tokens, curr^, .CParen)
+	consume_token(tokens, curr)
+
+	peek_expect(tokens, curr^, .Semicolon)
+	consume_token(tokens, curr)
+}
+
+parse_expr_stmt :: proc(tokens: []Token, curr: ^int) -> Expr_Stmt {
+	expr := parse_expression(tokens, curr, .Lowest)
+
+	peek_expect(tokens, curr^, .Semicolon)
+	consume_token(tokens, curr)
+
+	return {expr}
+}
+
+Precedence :: enum {
+	Lowest,
+	Additive,
+	Multiplicative
+}
+
+parse_expression :: proc(tokens: []Token, curr: ^int, min_prec: Precedence) -> ^Expr {
+	left := new_clone(Expr(parse_leaf(tokens, curr)))
+
+	for {
+		node := parse_increasing_precedence(tokens, curr, left, min_prec)
+		if is_expr_eq(node^, left^) {
+			// fmt.printfln("Found equality. node = %v, left = %v", node^, left^)
+			break
+		}
+		left = node
+	}
+
+	return left
+}
+
+parse_increasing_precedence :: proc(
+	tokens: []Token,
+	curr: ^int,
+	left: ^Expr,
+	min_prec: Precedence,
+) -> ^Expr {
+	next, avail := peek_token(tokens, curr^)
+	assert(avail)
+
+	fmt.printfln(">> %v", next)
+	if !is_binop(next) {
+		if next.kind != .Semicolon {
+			fmt.printfln("%s is not a binary operator", next.kind)
+		}
+		return left
+	}
+
+	peek_prec, ok := get_precedence(next.kind)
+	assert(ok, fmt.tprintf("Unknown kind: %s", next.kind))
+
+	if peek_prec <= min_prec {
+		return left
+	} else {
+		// Consume operator token
+		consume_token(tokens, curr)
+
+		right := parse_expression(tokens, curr, peek_prec)
+		out := new(Expr)
+		out^ = Binary_Expr {
+			left  = left,
+			op    = to_operator(next),
+			right = right,
+		}
+		// fmt.println(out^)
+		return out
+	}
+}
+
+parse_leaf :: proc(tokens: []Token, curr: ^int) -> Literal {
+	token, avail := peek_token(tokens, curr^)
+	if !avail do unreachable()
+
+	#partial switch token.kind {
+	case .Text:
+		token := consume_token(tokens, curr)
+		// fmt.printfln("text_lit -> %v", token.literal)
+		return token.literal
+	case .Number:
+		token := consume_token(tokens, curr)
+		val, ok := strconv.parse_f32(token.literal)
+		// fmt.printfln("num_lit -> %v", val)
+		assert(ok)
+		return val
+	case .Minus:
+		neg_token := consume_token(tokens, curr)
+		lit := parse_leaf(tokens, curr)
+		ok := negate_literal(&lit)
+		return lit
+	case .OBracket:
+		literal := consume_vector(tokens, curr)
+		// fmt.printfln("vec_lit -> %v", literal)
+		return literal
+	case:
+		// fmt.eprintfln("TODO: handle this token: (%d) %v", curr^, token)
+		unreachable()
+	}
+}
+
+consume_vector :: proc(tokens: []Token, curr: ^int) -> Vector {
+	peek_expect(tokens, curr^, .OBracket)
+	a := consume_token(tokens, curr)
+	fmt.println("\t", a)
+
+	count := 0
+	vec: Vector
+	for tokens[curr^].kind != .CBracket {
+		element := consume_token(tokens, curr)
+		fmt.println("\t", element)
+		assert(element.kind == .Number)
+
+		if count >= cap(vec) do unreachable()
+		count += 1
+
+		val, ok := strconv.parse_f32(element.literal)
+		assert(ok)
+		append(&vec, val)
+
+		next_token, avail := peek_token(tokens, curr^)
+		assert(avail)
+		if next_token.kind == .Comma {
+			a = consume_token(tokens, curr)
+			fmt.println("\t", a)
+		}
+	}
+
+	peek_expect(tokens, curr^, .CBracket)
+	a = consume_token(tokens, curr)
+	fmt.println("\t", a)
+
+	return vec
+}
+
+negate_literal :: proc(lit: ^Literal) -> bool {
+	switch &val in lit {
+	case f32:
+		val *= -1.0
+		return true
+	case string:
+		return false
+	case Vector:
+		for &v in val {
+			v *= 1.0
+		}
+		return false
+	}
+
+	unreachable()
+}
+
+dump_expr :: proc(expr: ^Expr) {
+	switch ex in expr {
+	case Binary_Expr:
+		fmt.print("(")
+		dump_expr(ex.left)
+
+		switch ex.op {
+		case .Add: fmt.print(" + ")
+		case .Sub: fmt.print(" - ")
+		case .Multiply: fmt.print(" * ")
+		case .Divide: fmt.print(" / ")
+		}
+
+		dump_expr(ex.right)
+		fmt.print(")")
+	case Literal:
+		fmt.printf("(%v)", ex)
+	}
+}
+
+dump_stmt :: proc(stmt: Stmt) {
+	#partial switch st in stmt {
+	case Expr_Stmt:
+		dump_expr(st.expr)
+		fmt.println(";")
+	case Def_Stmt:
+		if len(st.type) > 0 {
+			fmt.printfln("%s: %s = <EXPR_TO_BE_ADDED>;", st.name, st.type)
+		} else {
+			fmt.printfln("%s := <EXPR_TO_BE_ADDED>;", st.name)
+		}
+	case Call_Stmt:
+		fmt.printfln("%s();", st.name)
+	case:
+		fmt.eprintfln("unhandled kind: %v", st)
+		unimplemented()
+	}
+}
+
+get_precedence :: proc(kind: Token_Kind) -> (Precedence, bool) {
+	#partial switch kind {
+	case .Plus, .Minus:
+		return .Additive, true
+	case .Asterisk, .Slash:
+		return .Multiplicative, true
+	case:
+		return .Lowest, false
+	}
+}
+
+// ============================== UTILS ==============================
+to_operator :: proc(token: Token) -> Operator {
+	#partial switch token.kind {
+	case .Plus:
+		return .Add
+	case .Minus:
+		return .Sub
+	case .Asterisk:
+		return .Multiply
+	case .Slash:
+		return .Divide
+	case:
+		fmt.eprintfln("Unclassified operator: %s", token.kind)
+		unreachable()
+	}
+}
+
+is_binop :: proc(token: Token) -> bool {
+	return slice.contains(
+		[]Token_Kind{.Plus, .Minus, .Asterisk, .Slash},
+		token.kind
+	)
+}
+
+is_expr_eq :: proc(a, b: Expr) -> bool {
+	switch ex_a in a {
+	case Binary_Expr:
+		be_b, ok := b.(Binary_Expr)
+		if ok do return ex_a == be_b
+		else do return false
+	case Literal:
+		lit_b, ok := b.(Literal)
+		if ok do return is_lit_eq(ex_a, lit_b)
+		else do return false
+	}
+	return false
+}
+
+is_lit_eq :: proc(a, b: Literal) -> bool {
+	if type_of(a) == type_of(b) {
+		switch x in a {
+		case f32:
+			return a.(f32) == b.(f32)
+		case string:
+			return a.(string) == b.(string)
+		case Vector:
+			unimplemented()
+		}
+	}
+	return false
+}
+
+
+peek_expect :: proc(tokens: []Token, curr: int, kinds: ..Token_Kind) {
+	next_token, avail := peek_token(tokens, curr)
+	if !avail do unreachable()
+	for kind in kinds {
+		assert(kind == next_token.kind, fmt.tprintf("expected=%s, got=%v", kind, next_token))
+	}
+}
+
+peek_token :: #force_inline proc(tokens: []Token, curr: int, ahead: int = 0) -> (Token, bool) {
+	if is_at_end(tokens, curr + ahead) do return {}, false
+	return tokens[curr + ahead], true
+}
+
+consume_token :: proc(tokens: []Token, curr: ^int) -> Token {
+	if is_at_end(tokens, curr^) do unreachable()
+	token := tokens[curr^]
+	curr^ += 1
+	return token
+}
+
+
+@(private = "file")
+is_at_end :: #force_inline proc(tokens: []Token, curr: int) -> bool {
+	return curr >= len(tokens)
+}
