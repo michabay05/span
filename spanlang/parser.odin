@@ -165,7 +165,10 @@ parse_increasing_precedence :: proc(
 	next, avail := peek_token(tokens, curr^)
 	assert(avail)
 
-	fmt.printfln(">> %v", next)
+	if next.kind == .Semicolon {
+		return left
+	}
+
 	if !is_binop(next) {
 		if next.kind != .Semicolon {
 			fmt.printfln("%s is not a binary operator", next.kind)
@@ -353,7 +356,8 @@ is_expr_eq :: proc(a, b: Expr) -> bool {
 	switch ex_a in a {
 	case Binary_Expr:
 		be_b, ok := b.(Binary_Expr)
-		if ok do return ex_a == be_b
+		if ok do return is_expr_eq(ex_a.left^, be_b.left^) &&
+			ex_a.op == be_b.op && is_expr_eq(ex_a.right^, be_b.right^)
 		else do return false
 	case Literal:
 		lit_b, ok := b.(Literal)

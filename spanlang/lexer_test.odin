@@ -1,6 +1,5 @@
 package spanlang
 
-import "core:fmt"
 import "core:testing"
 
 @(test)
@@ -18,25 +17,15 @@ lexer_empty :: proc(t: ^testing.T) {
 lexer_source_w_whitespace :: proc(t: ^testing.T) {
     source := "    r1  :   = \n   rect(  \n\t )   ;  "
     expecteds := []Token {
-        {kind = .Identifier, literal = "r1"},
-        {kind = .Colon     , literal = ":"},
-        {kind = .Assign    , literal = "="},
-        {kind = .Identifier, literal = "rect"},
-        {kind = .OParen    , literal = "("},
-        {kind = .CParen    , literal = ")"},
-        {kind = .Semicolon , literal = ";"},
+	    {kind = .Identifier, literal = "r1"},
+	    {kind = .Colon     , literal = ":"},
+	    {kind = .Assign    , literal = "="},
+	    {kind = .Identifier, literal = "rect"},
+	    {kind = .OParen    , literal = "("},
+	    {kind = .CParen    , literal = ")"},
+	    {kind = .Semicolon , literal = ";"},
     }
-
-    tokens: [dynamic]Token
-    defer delete(tokens)
-    lex_content(source, &tokens)
-    testing.expectf(t, len(expecteds) == len(tokens),
-        "length: expected=%d, got=%d", len(expecteds), len(tokens))
-
-    for i in 0..<len(expecteds) {
-        testing.expectf(t, expecteds[i] == tokens[i],
-            "value: expected=%v, got=%v", expecteds[i], tokens[i])
-    }
+    lex_tester(t, source, expecteds)
 }
 
 @(test)
@@ -66,17 +55,7 @@ lexer_units :: proc(t: ^testing.T) {
         {kind = .CParen    , literal = ")"},
         {kind = .Semicolon , literal = ";"},
     }
-
-    tokens: [dynamic]Token
-    defer delete(tokens)
-    lex_content(source, &tokens)
-    testing.expectf(t, len(expecteds) == len(tokens),
-        "length: expected=%d, got=%d", len(expecteds), len(tokens))
-
-    for i in 0..<len(expecteds) {
-        testing.expectf(t, expecteds[i] == tokens[i],
-            "value: expected=%v, got=%v", expecteds[i], tokens[i])
-    }
+    lex_tester(t, source, expecteds)
 }
 
 @(test)
@@ -92,17 +71,7 @@ lexer_punctuation :: proc(t: ^testing.T) {
         {kind = .Comma    , literal = ","},
         {kind = .Semicolon, literal = ";"},
     }
-
-    tokens: [dynamic]Token
-    defer delete(tokens)
-    lex_content(source, &tokens)
-    testing.expectf(t, len(expecteds) == len(tokens),
-        "length: expected=%d, got=%d", len(expecteds), len(tokens))
-
-    for i in 0..<len(expecteds) {
-        testing.expectf(t, expecteds[i] == tokens[i],
-            "value: expected=%v, got=%v", expecteds[i], tokens[i])
-    }
+    lex_tester(t, source, expecteds)
 }
 
 @(test)
@@ -113,17 +82,7 @@ lexer_keywords :: proc(t: ^testing.T) {
         {kind = .Identifier, literal = "scenes"},
         {kind = .If        , literal = "if"},
     }
-
-    tokens: [dynamic]Token
-    defer delete(tokens)
-    lex_content(source, &tokens)
-    testing.expectf(t, len(expecteds) == len(tokens),
-        "length: expected=%d, got=%d", len(expecteds), len(tokens))
-
-    for i in 0..<len(expecteds) {
-        testing.expectf(t, expecteds[i] == tokens[i],
-            "value: expected=%v, got=%v", expecteds[i], tokens[i])
-    }
+    lex_tester(t, source, expecteds)
 }
 
 @(test)
@@ -138,15 +97,21 @@ lexer_text :: proc(t: ^testing.T) {
         {kind = .Text      , literal = "How are you doing, **today**?"},
         {kind = .CParen    , literal = ")"},
     }
+    lex_tester(t, source, expecteds)
+}
 
+@(private="file")
+lex_tester :: proc(
+	t: ^testing.T, source: string, expecteds: []Token, loc := #caller_location
+) {
     tokens: [dynamic]Token
     defer delete(tokens)
     lex_content(source, &tokens)
     testing.expectf(t, len(expecteds) == len(tokens),
-        "length: expected=%d, got=%d", len(expecteds), len(tokens))
+        "length: expected=%d, got=%d", len(expecteds), len(tokens), loc=loc)
 
     for i in 0..<len(expecteds) {
         testing.expectf(t, expecteds[i] == tokens[i],
-            "value: expected=%v, got=%v", expecteds[i], tokens[i])
+            "value: expected=%v, got=%v", expecteds[i], tokens[i], loc=loc)
     }
 }
