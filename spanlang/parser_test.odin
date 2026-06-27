@@ -18,16 +18,17 @@ parser_empty :: proc(t: ^testing.T) {
 }
 
 @(test)
-parser_unary_ops :: proc(t: ^testing.T) {
+parser_negate_op :: proc(t: ^testing.T) {
 	source := "-2; --3; 4; -5;"
 	expecteds := []Stmt {
-		Expr_Stmt{make_lit(f32(-2.0))},
-		Expr_Stmt{make_lit(f32(3))},
-		Expr_Stmt{make_lit(f32(4))},
+		Expr_Stmt{make_lit(f32(-2))},
+		Expr_Stmt{make_lit(f32( 3))},
+		Expr_Stmt{make_lit(f32( 4))},
 		Expr_Stmt{make_lit(f32(-5))},
 	}
 
 	parse_tester(t, source, expecteds)
+	free_all(context.allocator)
 }
 
 @(test)
@@ -55,6 +56,7 @@ parser_binary_ops :: proc(t: ^testing.T) {
 	}
 
 	parse_tester(t, source, expecteds)
+	free_all(context.allocator)
 }
 
 @(private="file")
@@ -73,7 +75,6 @@ make_binary :: proc(
 ) -> ^Expr {
 	return new_clone(Expr(Binary_Expr{left=left, op=op, right=right}), alloc)
 }
-
 
 @(private="file")
 parse_tester :: proc(

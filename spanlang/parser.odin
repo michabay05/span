@@ -60,10 +60,6 @@ parse_program :: proc(tokens: []Token, stmts: ^[dynamic]Stmt) {
 			append(stmts, parse_expr_stmt(tokens, &curr))
 		}
 	}
-
-	for stmt in stmts {
-		dump_stmt(stmt)
-	}
 }
 
 parse_ident_stmt :: proc(tokens: []Token, curr: ^int) -> Stmt {
@@ -88,7 +84,7 @@ parse_ident_stmt :: proc(tokens: []Token, curr: ^int) -> Stmt {
 		parse_call_stmt(tokens, curr, &call_stmt)
 		return call_stmt
 	case:
-		fmt.eprintfln("TODO: handle this token: (%d) %v", curr, token)
+		fmt.eprintfln("TODO: handle this token: (%d) %v", curr^, token)
 		unimplemented()
 	}
 }
@@ -170,9 +166,9 @@ parse_increasing_precedence :: proc(
 	}
 
 	if !is_binop(next) {
-		if next.kind != .Semicolon {
-			fmt.printfln("%s is not a binary operator", next.kind)
-		}
+		// if next.kind != .Semicolon {
+		// 	fmt.printfln("%s is not a binary operator", next.kind)
+		// }
 		return left
 	}
 
@@ -230,13 +226,13 @@ parse_leaf :: proc(tokens: []Token, curr: ^int) -> Literal {
 consume_vector :: proc(tokens: []Token, curr: ^int) -> Vector {
 	peek_expect(tokens, curr^, .OBracket)
 	a := consume_token(tokens, curr)
-	fmt.println("\t", a)
+	// fmt.println("\t", a)
 
 	count := 0
 	vec: Vector
 	for tokens[curr^].kind != .CBracket {
 		element := consume_token(tokens, curr)
-		fmt.println("\t", element)
+		// fmt.println("\t", element)
 		assert(element.kind == .Number)
 
 		if count >= cap(vec) do unreachable()
@@ -250,13 +246,13 @@ consume_vector :: proc(tokens: []Token, curr: ^int) -> Vector {
 		assert(avail)
 		if next_token.kind == .Comma {
 			a = consume_token(tokens, curr)
-			fmt.println("\t", a)
+			// fmt.println("\t", a)
 		}
 	}
 
 	peek_expect(tokens, curr^, .CBracket)
 	a = consume_token(tokens, curr)
-	fmt.println("\t", a)
+	// fmt.println("\t", a)
 
 	return vec
 }
@@ -294,7 +290,7 @@ dump_expr :: proc(expr: ^Expr) {
 		dump_expr(ex.right)
 		fmt.print(")")
 	case Literal:
-		fmt.printf("(%v)", ex)
+		fmt.printf("%v", ex)
 	}
 }
 
