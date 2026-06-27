@@ -41,4 +41,6 @@ main :: proc() {
     for stmt in stmts {
 		dump_stmt(stmt)
 	}
+
+	eval_program(stmts[:])
 }

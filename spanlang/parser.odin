@@ -123,18 +123,45 @@ parse_call_stmt :: proc(tokens: []Token, curr: ^int, stmt: ^Call_Stmt) {
 }
 
 parse_expr_stmt :: proc(tokens: []Token, curr: ^int) -> Expr_Stmt {
-	expr := parse_expression(tokens, curr, .Lowest)
+	if tokens[curr^].kind == .OParen {
+		es: Expr_Stmt
+		consume_token(tokens, curr)
 
-	peek_expect(tokens, curr^, .Semicolon)
-	consume_token(tokens, curr)
+		es = Expr_Stmt{parse_expression(tokens, curr, .Lowest)}
 
-	return {expr}
+		peek_expect(tokens, curr^, .CParen)
+		consume_token(tokens, curr)
+
+		if is_binop(tokens[curr^]) {
+			op := to_operator(tokens[curr^])
+			consume_token(tokens, curr)
+			binary_expr := Binary_Expr{
+				left = es.expr,
+				op = op,
+				right = parse_expression(tokens, curr, .Lowest)
+			}
+			es = Expr_Stmt{new_clone(Expr(binary_expr))}
+		}
+
+		peek_expect(tokens, curr^, .Semicolon)
+		consume_token(tokens, curr)
+
+		return es
+	} else {
+		es := Expr_Stmt{parse_expression(tokens, curr, .Lowest)}
+
+		peek_expect(tokens, curr^, .Semicolon)
+		consume_token(tokens, curr)
+
+		return es
+	}
 }
 
 Precedence :: enum {
 	Lowest,
 	Additive,
-	Multiplicative
+	Multiplicative,
+	Grouped
 }
 
 parse_expression :: proc(tokens: []Token, curr: ^int, min_prec: Precedence) -> ^Expr {
