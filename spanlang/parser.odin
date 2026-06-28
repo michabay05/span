@@ -28,11 +28,17 @@ Operator :: enum {
 	Sub,
 	Multiply,
 	Divide,
+	Negate,
 }
 Expr :: union {
 	Identifier,
 	Literal,
+	Unary_Expr,
 	Infix_Expr,
+}
+Unary_Expr :: struct {
+	op:    Operator,
+	right: ^Expr,
 }
 Infix_Expr :: struct {
 	op:    Operator,
@@ -40,11 +46,9 @@ Infix_Expr :: struct {
 	right: ^Expr,
 }
 
-Vector :: [dynamic; 4]f32
 Literal :: union {
 	f32,
 	string,
-	Vector,
 }
 Identifier :: struct {
 	name: string,
@@ -64,6 +68,7 @@ Precedence :: enum {
 	Lowest,
 	Additive,
 	Multiplicative,
+	Prefix,
 	Grouped,
 }
 
@@ -86,8 +91,7 @@ parse_program :: proc(tokens: []Token, stmts: ^[dynamic]Stmt) -> Parser {
 			ident := _consume_token(&p)
 			append(stmts, _parse_ident_stmt(&p, Identifier{ident.literal}))
 		case:
-			fmt.printfln("[TODO] parse this token kind: %v", token)
-			unimplemented()
+			append(stmts, Stmt(_parse_expr_stmt(&p)))
 		}
 	}
 
@@ -109,7 +113,7 @@ dump_stmt :: proc(stmt: Stmt) {
 		_dump_expr(st.expr)
 		fmt.println()
 	case Call_Stmt:
-		fmt.printfln("%s();", st.name)
+		fmt.printfln("%s(<EXPR_TO_BE_DONE>);", st.name)
 	case:
 		fmt.eprintfln("unhandled kind: %v", st)
 		unimplemented()
@@ -119,6 +123,15 @@ dump_stmt :: proc(stmt: Stmt) {
 _dump_expr :: proc(expr: ^Expr) {
 	if expr == nil do return
 	switch ex in expr {
+	case Unary_Expr:
+		#partial switch ex.op {
+		case .Negate:
+			fmt.printf("-(")
+			_dump_expr(ex.right)
+			fmt.printf(")")
+		case: unreachable()
+		}
+
 	case Infix_Expr:
 		fmt.print("(")
 		_dump_expr(ex.left)
@@ -128,6 +141,7 @@ _dump_expr :: proc(expr: ^Expr) {
 		case .Sub: fmt.print(" - ")
 		case .Multiply: fmt.print(" * ")
 		case .Divide: fmt.print(" / ")
+		case .Negate: unreachable()
 		}
 
 		_dump_expr(ex.right)
@@ -153,6 +167,12 @@ _parse_ident_stmt :: proc(p: ^Parser, ident: Identifier) -> Stmt {
 	}
 }
 
+_parse_expr_stmt :: proc(p: ^Parser) -> Expr_Stmt {
+	expr := _parse_expression(p, .Lowest)
+	_, sc_ok := _expect_consume(p, .Semicolon)
+	return Expr_Stmt{expr = expr}
+}
+
 _parse_def_stmt :: proc(p: ^Parser, name: Identifier) -> Def_Stmt {
 	def_stmt := Def_Stmt{
 		ident = name,
@@ -174,8 +194,6 @@ _parse_def_stmt :: proc(p: ^Parser, name: Identifier) -> Def_Stmt {
 
 	sc, sc_ok := _expect_consume(p, .Semicolon)
 	assert(sc_ok)
-	// fmt.printfln("got here; %v", sc)
-	// fmt.printfln("%v", p.tokens[p.curr])
 	return def_stmt
 }
 
@@ -200,8 +218,8 @@ _parse_expression :: proc(p: ^Parser, min_prec: Precedence) -> ^Expr {
 
 		infix_fn, infix_ok := p.infix_fns[token.kind]
 		if !infix_ok {
-			fmt.eprintfln("WARN: no infix function found for %v", token)
-			return left
+			fmt.eprintfln("ERROR: no infix function found for %v", token)
+			unreachable()
 		}
 
 		left = infix_fn(p, left)
@@ -261,6 +279,19 @@ _add_prefix_fns :: proc(p: ^Parser) {
 		assert(ok, fmt.tprintf("Unable to find matching close paren"), loc = #location())
 		return expr
 	}
+
+	p.prefix_fns[.Minus] = proc(p: ^Parser, alloc := context.allocator) -> ^Expr {
+		negate := _consume_token(p)
+		return new_clone(Expr(Unary_Expr{
+			op = .Negate,
+			right = _parse_expression(p, .Prefix)
+		}), allocator=alloc)
+	}
+
+	p.prefix_fns[.Text] = proc(p: ^Parser, alloc := context.allocator) -> ^Expr {
+		text := _consume_token(p)
+		return new_clone(Expr(Literal(text.literal)), allocator=alloc)
+	}
 }
 
 _add_infix_fns :: proc(p: ^Parser) {
@@ -285,6 +316,7 @@ _add_infix_fns :: proc(p: ^Parser) {
 	p.infix_fns[.Plus] = _parse_infix_expr
 	p.infix_fns[.Minus] = _parse_infix_expr
 	p.infix_fns[.Asterisk] = _parse_infix_expr
+	p.infix_fns[.Slash] = _parse_infix_expr
 }
 
 _to_operator :: proc(token: Token) -> (Operator, bool) {
@@ -310,6 +342,8 @@ _is_at_end :: #force_inline proc(tokens: []Token, curr: int) -> bool {
 
 is_expr_eq :: proc(a, b: Expr) -> bool {
 	switch ex_a in a {
+	case Unary_Expr:
+		unimplemented()
 	case Infix_Expr:
 		be_b, ok := b.(Infix_Expr)
 		if ok do return is_expr_eq(ex_a.left^, be_b.left^) && ex_a.op == be_b.op && is_expr_eq(ex_a.right^, be_b.right^)
@@ -331,8 +365,6 @@ is_lit_eq :: proc(a, b: Literal) -> bool {
 			return a.(f32) == b.(f32)
 		case string:
 			return a.(string) == b.(string)
-		case Vector:
-			unimplemented()
 		}
 	}
 	return false

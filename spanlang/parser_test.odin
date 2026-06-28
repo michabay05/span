@@ -64,7 +64,6 @@ make_lit :: proc(literal: any, alloc := context.temp_allocator) -> ^Expr {
 	switch lit in literal {
 	case f32: return new_clone(Expr(Literal(lit)), alloc)
 	case string: return new_clone(Expr(Literal(lit)), alloc)
-	case Vector: return new_clone(Expr(Literal(lit)), alloc)
 	case: unreachable()
 	}
 }
