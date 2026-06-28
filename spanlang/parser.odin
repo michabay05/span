@@ -1,12 +1,12 @@
 package spanlang
 
 import "core:fmt"
-import "core:slice"
 import "core:strconv"
 
 Def_Stmt :: struct {
-	name: string,
+	ident: Identifier,
 	type: string,
+	expr: ^Expr,
 }
 
 Call_Stmt :: struct {
@@ -27,13 +27,14 @@ Operator :: enum {
 	Add,
 	Sub,
 	Multiply,
-	Divide
+	Divide,
 }
 Expr :: union {
+	Identifier,
 	Literal,
-	Binary_Expr,
+	Infix_Expr,
 }
-Binary_Expr :: struct {
+Infix_Expr :: struct {
 	op:    Operator,
 	left:  ^Expr,
 	right: ^Expr,
@@ -45,293 +46,68 @@ Literal :: union {
 	string,
 	Vector,
 }
-
-parse_program :: proc(tokens: []Token, stmts: ^[dynamic]Stmt) {
-	curr := 0
-
-	for curr < len(tokens) {
-		token, avail := peek_token(tokens, curr)
-		if !avail do break
-
-		#partial switch token.kind {
-		case .Identifier:
-			append(stmts, parse_ident_stmt(tokens, &curr))
-		case:
-			append(stmts, parse_expr_stmt(tokens, &curr))
-		}
-	}
+Identifier :: struct {
+	name: string,
 }
 
-parse_ident_stmt :: proc(tokens: []Token, curr: ^int) -> Stmt {
-	ident := consume_token(tokens, curr)
-
-	token, avail := peek_token(tokens, curr^)
-	if !avail do unreachable()
-	consume_token(tokens, curr)
-
-	#partial switch token.kind {
-	case .Colon:
-		def_stmt := Def_Stmt {
-			name = ident.literal,
-			type = "",
-		}
-		parse_def_stmt(tokens, curr, &def_stmt)
-		return def_stmt
-	case .OParen:
-		call_stmt := Call_Stmt {
-			name = ident.literal,
-		}
-		parse_call_stmt(tokens, curr, &call_stmt)
-		return call_stmt
-	case:
-		fmt.eprintfln("TODO: handle this token: (%d) %v", curr^, token)
-		unimplemented()
-	}
-}
-
-parse_def_stmt :: proc(tokens: []Token, curr: ^int, stmt: ^Def_Stmt) {
-	// NOTE: Skip until semicolon; set to null for now
-	// TODO: parse type info
-
-	peek_expect(tokens, curr^, .Assign)
-	consume_token(tokens, curr)
-
-	// NOTE: Skip until semicolon
-	// TODO: parse expression
-	for tokens[curr^].kind != .Semicolon {
-		consume_token(tokens, curr)
-	}
-
-	peek_expect(tokens, curr^, .Semicolon)
-	consume_token(tokens, curr)
-}
-
-parse_call_stmt :: proc(tokens: []Token, curr: ^int, stmt: ^Call_Stmt) {
-	// TODO: rework parse expressions
-
-	// NOTE: Skip until semicolon
-	// TODO: parse expression
-	for tokens[curr^].kind != .CParen {
-		consume_token(tokens, curr)
-	}
-
-	peek_expect(tokens, curr^, .CParen)
-	consume_token(tokens, curr)
-
-	peek_expect(tokens, curr^, .Semicolon)
-	consume_token(tokens, curr)
-}
-
-parse_expr_stmt :: proc(tokens: []Token, curr: ^int) -> Expr_Stmt {
-	if tokens[curr^].kind == .OParen {
-		es: Expr_Stmt
-		consume_token(tokens, curr)
-
-		es = Expr_Stmt{parse_expression(tokens, curr, .Lowest)}
-
-		peek_expect(tokens, curr^, .CParen)
-		consume_token(tokens, curr)
-
-		if is_binop(tokens[curr^]) {
-			op := to_operator(tokens[curr^])
-			consume_token(tokens, curr)
-			binary_expr := Binary_Expr{
-				left = es.expr,
-				op = op,
-				right = parse_expression(tokens, curr, .Lowest)
-			}
-			es = Expr_Stmt{new_clone(Expr(binary_expr))}
-		}
-
-		peek_expect(tokens, curr^, .Semicolon)
-		consume_token(tokens, curr)
-
-		return es
-	} else {
-		es := Expr_Stmt{parse_expression(tokens, curr, .Lowest)}
-
-		peek_expect(tokens, curr^, .Semicolon)
-		consume_token(tokens, curr)
-
-		return es
-	}
+PrefixParseFns :: map[Token_Kind]proc(p: ^Parser, alloc := context.allocator) -> ^Expr
+InfixParseFns :: map[Token_Kind]proc(p: ^Parser, left: ^Expr, alloc := context.allocator) -> ^Expr
+Parser :: struct {
+	tokens:     []Token,
+	curr:       int,
+	stmts:      ^[dynamic]Stmt,
+	prefix_fns: PrefixParseFns,
+	infix_fns:  InfixParseFns,
 }
 
 Precedence :: enum {
 	Lowest,
 	Additive,
 	Multiplicative,
-	Grouped
+	Grouped,
 }
 
-parse_expression :: proc(tokens: []Token, curr: ^int, min_prec: Precedence) -> ^Expr {
-	left := new_clone(Expr(parse_leaf(tokens, curr)))
-
-	for {
-		node := parse_increasing_precedence(tokens, curr, left, min_prec)
-		if is_expr_eq(node^, left^) {
-			// fmt.printfln("Found equality. node = %v, left = %v", node^, left^)
-			break
-		}
-		left = node
+parse_program :: proc(tokens: []Token, stmts: ^[dynamic]Stmt) -> Parser {
+	p := Parser {
+		tokens     = tokens,
+		curr       = 0,
+		stmts      = stmts,
+		prefix_fns = make(PrefixParseFns),
+		infix_fns  = make(InfixParseFns),
 	}
+	_add_prefix_fns(&p)
+	_add_infix_fns(&p)
 
-	return left
-}
-
-parse_increasing_precedence :: proc(
-	tokens: []Token,
-	curr: ^int,
-	left: ^Expr,
-	min_prec: Precedence,
-) -> ^Expr {
-	next, avail := peek_token(tokens, curr^)
-	assert(avail)
-
-	if next.kind == .Semicolon {
-		return left
-	}
-
-	if !is_binop(next) {
-		// if next.kind != .Semicolon {
-		// 	fmt.printfln("%s is not a binary operator", next.kind)
-		// }
-		return left
-	}
-
-	peek_prec, ok := get_precedence(next.kind)
-	assert(ok, fmt.tprintf("Unknown kind: %s", next.kind))
-
-	if peek_prec <= min_prec {
-		return left
-	} else {
-		// Consume operator token
-		consume_token(tokens, curr)
-
-		right := parse_expression(tokens, curr, peek_prec)
-		out := new(Expr)
-		out^ = Binary_Expr {
-			left  = left,
-			op    = to_operator(next),
-			right = right,
-		}
-		// fmt.println(out^)
-		return out
-	}
-}
-
-parse_leaf :: proc(tokens: []Token, curr: ^int) -> Literal {
-	token, avail := peek_token(tokens, curr^)
-	if !avail do unreachable()
-
-	#partial switch token.kind {
-	case .Text:
-		token := consume_token(tokens, curr)
-		// fmt.printfln("text_lit -> %v", token.literal)
-		return token.literal
-	case .Number:
-		token := consume_token(tokens, curr)
-		val, ok := strconv.parse_f32(token.literal)
-		// fmt.printfln("num_lit -> %v", val)
+	for p.curr < len(p.tokens) {
+		token, ok := _peek_token(&p)
 		assert(ok)
-		return val
-	case .Minus:
-		neg_token := consume_token(tokens, curr)
-		lit := parse_leaf(tokens, curr)
-		ok := negate_literal(&lit)
-		return lit
-	case .OBracket:
-		literal := consume_vector(tokens, curr)
-		// fmt.printfln("vec_lit -> %v", literal)
-		return literal
-	case:
-		// fmt.eprintfln("TODO: handle this token: (%d) %v", curr^, token)
-		unreachable()
-	}
-}
-
-consume_vector :: proc(tokens: []Token, curr: ^int) -> Vector {
-	peek_expect(tokens, curr^, .OBracket)
-	a := consume_token(tokens, curr)
-	// fmt.println("\t", a)
-
-	count := 0
-	vec: Vector
-	for tokens[curr^].kind != .CBracket {
-		element := consume_token(tokens, curr)
-		// fmt.println("\t", element)
-		assert(element.kind == .Number)
-
-		if count >= cap(vec) do unreachable()
-		count += 1
-
-		val, ok := strconv.parse_f32(element.literal)
-		assert(ok)
-		append(&vec, val)
-
-		next_token, avail := peek_token(tokens, curr^)
-		assert(avail)
-		if next_token.kind == .Comma {
-			a = consume_token(tokens, curr)
-			// fmt.println("\t", a)
+		#partial switch token.kind {
+		case .Identifier:
+			ident := _consume_token(&p)
+			append(stmts, _parse_ident_stmt(&p, Identifier{ident.literal}))
+		case:
+			fmt.printfln("[TODO] parse this token kind: %v", token)
+			unimplemented()
 		}
 	}
 
-	peek_expect(tokens, curr^, .CBracket)
-	a = consume_token(tokens, curr)
-	// fmt.println("\t", a)
-
-	return vec
-}
-
-negate_literal :: proc(lit: ^Literal) -> bool {
-	switch &val in lit {
-	case f32:
-		val *= -1.0
-		return true
-	case string:
-		return false
-	case Vector:
-		for &v in val {
-			v *= 1.0
-		}
-		return false
-	}
-
-	unreachable()
-}
-
-dump_expr :: proc(expr: ^Expr) {
-	switch ex in expr {
-	case Binary_Expr:
-		fmt.print("(")
-		dump_expr(ex.left)
-
-		switch ex.op {
-		case .Add: fmt.print(" + ")
-		case .Sub: fmt.print(" - ")
-		case .Multiply: fmt.print(" * ")
-		case .Divide: fmt.print(" / ")
-		}
-
-		dump_expr(ex.right)
-		fmt.print(")")
-	case Literal:
-		fmt.printf("%v", ex)
-	}
+	return p
 }
 
 dump_stmt :: proc(stmt: Stmt) {
 	#partial switch st in stmt {
 	case Expr_Stmt:
-		dump_expr(st.expr)
+		_dump_expr(st.expr)
 		fmt.println(";")
 	case Def_Stmt:
+		fmt.printf("%s", st.ident.name)
 		if len(st.type) > 0 {
-			fmt.printfln("%s: %s = <EXPR_TO_BE_ADDED>;", st.name, st.type)
+			fmt.print(": %s ", st.type)
 		} else {
-			fmt.printfln("%s := <EXPR_TO_BE_ADDED>;", st.name)
+			fmt.print(" := ")
 		}
+		_dump_expr(st.expr)
+		fmt.println()
 	case Call_Stmt:
 		fmt.printfln("%s();", st.name)
 	case:
@@ -340,52 +116,210 @@ dump_stmt :: proc(stmt: Stmt) {
 	}
 }
 
-get_precedence :: proc(kind: Token_Kind) -> (Precedence, bool) {
+_dump_expr :: proc(expr: ^Expr) {
+	if expr == nil do return
+	switch ex in expr {
+	case Infix_Expr:
+		fmt.print("(")
+		_dump_expr(ex.left)
+
+		switch ex.op {
+		case .Add: fmt.print(" + ")
+		case .Sub: fmt.print(" - ")
+		case .Multiply: fmt.print(" * ")
+		case .Divide: fmt.print(" / ")
+		}
+
+		_dump_expr(ex.right)
+		fmt.print(")")
+	case Literal:
+		fmt.print(ex)
+	case Identifier:
+		fmt.print(ex.name)
+	}
+}
+
+_parse_ident_stmt :: proc(p: ^Parser, ident: Identifier) -> Stmt {
+	token, ok := _peek_token(p)
+	assert(ok)
+
+	#partial switch token.kind {
+	case .Colon:
+		colon := _consume_token(p)
+		return Stmt(_parse_def_stmt(p, ident))
+	case:
+		fmt.printfln("[TODO] parse this token after an ident: %v", token)
+		unimplemented()
+	}
+}
+
+_parse_def_stmt :: proc(p: ^Parser, name: Identifier) -> Def_Stmt {
+	def_stmt := Def_Stmt{
+		ident = name,
+		type = "",
+		expr = nil,
+	}
+
+	token, ok := _peek_token(p)
+	assert(ok)
+
+	#partial switch token.kind {
+	case .Assign:
+		assign := _consume_token(p)
+		def_stmt.expr = _parse_expression(p, .Lowest)
+	case:
+		fmt.printfln("[TODO] parse this token for a def stmt: %v", token)
+		unimplemented()
+	}
+
+	sc, sc_ok := _expect_consume(p, .Semicolon)
+	assert(sc_ok)
+	// fmt.printfln("got here; %v", sc)
+	// fmt.printfln("%v", p.tokens[p.curr])
+	return def_stmt
+}
+
+_parse_expression :: proc(p: ^Parser, min_prec: Precedence) -> ^Expr {
+	first_token, peek_ok := _peek_token(p)
+	assert(peek_ok)
+
+	prefix_fn, prefix_ok := p.prefix_fns[first_token.kind]
+	if !prefix_ok {
+		if first_token.kind != .Semicolon {
+			fmt.eprintfln("ERROR: no prefix function found for %v", first_token)
+		}
+		return nil
+	}
+	left := prefix_fn(p)
+
+	for {
+		token, ok := _peek_token(p)
+		if !(ok && token.kind != .Semicolon && min_prec < _get_precedence(token.kind)) {
+			break
+		}
+
+		infix_fn, infix_ok := p.infix_fns[token.kind]
+		if !infix_ok {
+			fmt.eprintfln("WARN: no infix function found for %v", token)
+			return left
+		}
+
+		left = infix_fn(p, left)
+	}
+
+	return left
+}
+
+_get_precedence :: proc(kind: Token_Kind) -> Precedence {
 	#partial switch kind {
 	case .Plus, .Minus:
-		return .Additive, true
+		return .Additive
 	case .Asterisk, .Slash:
-		return .Multiplicative, true
+		return .Multiplicative
 	case:
-		return .Lowest, false
+		return .Lowest
 	}
 }
 
-// ============================== UTILS ==============================
-to_operator :: proc(token: Token) -> Operator {
+_peek_token :: #force_inline proc(p: ^Parser, ahead: int = 0) -> (Token, bool) {
+	if _is_at_end(p.tokens, p.curr + ahead) do return {}, false
+	return p.tokens[p.curr + ahead], true
+}
+
+_consume_token :: proc(p: ^Parser) -> Token {
+	token := p.tokens[p.curr]
+	p.curr += 1
+	return token
+}
+
+_expect_consume :: proc(p: ^Parser, kind: Token_Kind) -> (Token, bool) {
+	token, ok := _peek_token(p)
+	if ok && token.kind == kind {
+		return _consume_token(p), true
+	} else {
+		// TODO: log error here
+		return {}, false
+	}
+}
+
+_add_prefix_fns :: proc(p: ^Parser) {
+	p.prefix_fns[.Number] = proc(p: ^Parser, alloc := context.allocator) -> ^Expr {
+		num_token := _consume_token(p)
+		val, ok := strconv.parse_f32(num_token.literal)
+		assert(
+			ok,
+			fmt.tprintf("Unable to parse '%v' as f32", num_token.literal),
+			loc = #location(),
+		)
+		return new_clone(Expr(Literal(val)), allocator=alloc)
+	}
+
+	p.prefix_fns[.OParen] = proc(p: ^Parser, alloc := context.allocator) -> ^Expr {
+		oparen := _consume_token(p)
+		expr := _parse_expression(p, .Lowest)
+		_, ok := _expect_consume(p, .CParen)
+		assert(ok, fmt.tprintf("Unable to find matching close paren"), loc = #location())
+		return expr
+	}
+}
+
+_add_infix_fns :: proc(p: ^Parser) {
+	_parse_infix_expr :: proc(p: ^Parser, left: ^Expr, alloc := context.allocator) -> ^Expr {
+		op_token := _consume_token(p)
+		op, op_ok := _to_operator(op_token)
+		if !op_ok {
+			fmt.eprintfln("Could not find op mapping for %v", op_token)
+			unreachable()
+		}
+
+		prec := _get_precedence(op_token.kind)
+		right := _parse_expression(p, prec)
+
+		return new_clone(Expr(Infix_Expr{
+			left = left,
+			op = op,
+			right = right
+		}), allocator=alloc)
+	}
+
+	p.infix_fns[.Plus] = _parse_infix_expr
+	p.infix_fns[.Minus] = _parse_infix_expr
+	p.infix_fns[.Asterisk] = _parse_infix_expr
+}
+
+_to_operator :: proc(token: Token) -> (Operator, bool) {
 	#partial switch token.kind {
 	case .Plus:
-		return .Add
+		return .Add, true
 	case .Minus:
-		return .Sub
+		return .Sub, true
 	case .Asterisk:
-		return .Multiply
+		return .Multiply, true
 	case .Slash:
-		return .Divide
+		return .Divide, true
 	case:
-		fmt.eprintfln("Unclassified operator: %s", token.kind)
-		unreachable()
+		return nil, false
 	}
 }
 
-is_binop :: proc(token: Token) -> bool {
-	return slice.contains(
-		[]Token_Kind{.Plus, .Minus, .Asterisk, .Slash},
-		token.kind
-	)
+
+@(private = "file")
+_is_at_end :: #force_inline proc(tokens: []Token, curr: int) -> bool {
+	return curr >= len(tokens)
 }
 
 is_expr_eq :: proc(a, b: Expr) -> bool {
 	switch ex_a in a {
-	case Binary_Expr:
-		be_b, ok := b.(Binary_Expr)
-		if ok do return is_expr_eq(ex_a.left^, be_b.left^) &&
-			ex_a.op == be_b.op && is_expr_eq(ex_a.right^, be_b.right^)
+	case Infix_Expr:
+		be_b, ok := b.(Infix_Expr)
+		if ok do return is_expr_eq(ex_a.left^, be_b.left^) && ex_a.op == be_b.op && is_expr_eq(ex_a.right^, be_b.right^)
 		else do return false
 	case Literal:
 		lit_b, ok := b.(Literal)
 		if ok do return is_lit_eq(ex_a, lit_b)
 		else do return false
+	case Identifier:
+		unimplemented()
 	}
 	return false
 }
@@ -402,31 +336,4 @@ is_lit_eq :: proc(a, b: Literal) -> bool {
 		}
 	}
 	return false
-}
-
-
-peek_expect :: proc(tokens: []Token, curr: int, kinds: ..Token_Kind) {
-	next_token, avail := peek_token(tokens, curr)
-	if !avail do unreachable()
-	for kind in kinds {
-		assert(kind == next_token.kind, fmt.tprintf("expected=%s, got=%v", kind, next_token))
-	}
-}
-
-peek_token :: #force_inline proc(tokens: []Token, curr: int, ahead: int = 0) -> (Token, bool) {
-	if is_at_end(tokens, curr + ahead) do return {}, false
-	return tokens[curr + ahead], true
-}
-
-consume_token :: proc(tokens: []Token, curr: ^int) -> Token {
-	if is_at_end(tokens, curr^) do unreachable()
-	token := tokens[curr^]
-	curr^ += 1
-	return token
-}
-
-
-@(private = "file")
-is_at_end :: #force_inline proc(tokens: []Token, curr: int) -> bool {
-	return curr >= len(tokens)
 }

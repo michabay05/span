@@ -1,14 +1,16 @@
-package spancli
+package spanlang
 
 import "core:bufio"
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import spl "spanlang"
 
 main :: proc() {
 	program, args := os.args[0], os.args[1:]
-	if len(args) < 1 do usage(program)
+	if len(args) < 1 {
+		usage(program)
+		return
+	}
 
 	switch args[0] {
 	case "r":
@@ -32,22 +34,22 @@ run_file :: proc(filepath: string) {
     content := strings.trim_space(string(data))
     fmt.println(content)
 
-    tokens: [dynamic]spl.Token
+    tokens: [dynamic]Token
     defer delete(tokens)
-    spl.lex_content(content, &tokens)
+    lex_content(content, &tokens)
     for token, i in tokens {
         fmt.printfln("[% 3d] %15s\t%s", i, token.kind, token.literal)
     }
 
-    stmts: [dynamic]spl.Stmt
+    stmts: [dynamic]Stmt
     defer delete(stmts)
-    spl.parse_program(tokens[:], &stmts)
+    parse_program(tokens[:], &stmts)
 
     for stmt in stmts {
-    	spl.dump_stmt(stmt)
+    	dump_stmt(stmt)
     }
 
-    spl.eval_program(stmts[:])
+    eval_program(stmts[:])
 }
 
 start_repl :: proc() {
@@ -57,9 +59,9 @@ start_repl :: proc() {
 	stdin := os.to_stream(os.stdin)
 	bufio.scanner_init(&scanner, stdin)
 
-	tokens: [dynamic]spl.Token
+	tokens: [dynamic]Token
 	defer delete(tokens)
-	stmts: [dynamic]spl.Stmt
+	stmts: [dynamic]Stmt
 	defer delete(stmts)
 	for {
 		fmt.print("> ")
@@ -70,19 +72,19 @@ start_repl :: proc() {
 
 		line := bufio.scanner_text(&scanner)
 		clear(&tokens)
-		spl.lex_content(line, &tokens)
+		lex_content(line, &tokens)
 		// TODO: This is just a hack for now
 		if tokens[len(tokens) - 1].kind != .Semicolon {
-			append(&tokens, spl.Token{ .Semicolon, ";" })
+			append(&tokens, Token{ .Semicolon, ";" })
 		}
 
 		clear(&stmts)
-		spl.parse_program(tokens[:], &stmts)
+		parse_program(tokens[:], &stmts)
 		for stmt in stmts {
-			spl.dump_stmt(stmt)
+			dump_stmt(stmt)
 		}
 
-		spl.eval_program(stmts[:])
+		eval_program(stmts[:])
 	}
 }
 

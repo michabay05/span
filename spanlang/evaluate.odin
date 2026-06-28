@@ -2,29 +2,38 @@ package spanlang
 
 import "core:fmt"
 
+Scope :: map[string]Literal
+
 eval_program :: proc(stmts: []Stmt) {
+	fmt.println("------------------------------------")
+	scope: Scope
 	for stmt in stmts {
 		#partial switch st in stmt {
+		case Def_Stmt:
+			fmt.printfln("%v", st)
 		case Expr_Stmt:
 			lit := _eval_expr(st.expr)
 			fmt.println(lit)
 		case:
 			fmt.eprintfln("[eval] TODO: handle %v\n", st)
+			assert(false)
 		}
 	}
 }
 
 _eval_expr :: proc(expr: ^Expr) -> Literal {
 	switch ex in expr^ {
+	case Identifier:
+		unimplemented()
 	case Literal:
 		return ex
-	case Binary_Expr:
-		return _eval_binary_expr(ex)
+	case Infix_Expr:
+		return _eval_Infix_expr(ex)
 	}
 	unreachable()
 }
 
-_eval_binary_expr :: proc(be: Binary_Expr) -> Literal {
+_eval_Infix_expr :: proc(be: Infix_Expr) -> Literal {
 	left := _eval_expr(be.left)
 	right := _eval_expr(be.right)
 
