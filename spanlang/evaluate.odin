@@ -2,14 +2,23 @@ package spanlang
 
 import "core:fmt"
 
-eval_program :: proc(stmts: []Stmt) {
+Scope :: map[string]^Expr
+
+eval_program :: proc(stmts: []Stmt, scope: ^Scope) {
 	fmt.println("------------------------------------")
 	for stmt in stmts {
 		#partial switch st in stmt {
 		case Def_Stmt:
-			fmt.printfln("%v", st)
+			if st.ident.name not_in scope {
+				scope[st.ident.name] = st.expr
+				fmt.printfln("[INFO] added '%v' into scope", st.ident.name)
+			} else {
+				fmt.printfln("Redefinition of %v", st.ident.name)
+			}
 		case Expr_Stmt:
-			fmt.printfln("%v", st)
+			expr := Expr(_eval_expr(st.expr, scope^))
+			_dump_expr(&expr)
+			fmt.println()
 		case:
 			fmt.eprintfln("[eval] TODO: handle %v\n", st)
 			assert(false)
@@ -17,75 +26,37 @@ eval_program :: proc(stmts: []Stmt) {
 	}
 }
 
-_eval_expr :: proc(expr: ^Expr) -> Literal {
-	switch ex in expr^ {
+_eval_expr :: proc(expr: ^Expr, scope: Scope) -> Literal {
+	switch ex in expr {
+	case Literal: return ex
 	case Identifier:
-		unimplemented()
-	case Literal:
-		return ex
-	case Unary_Expr:
-		unimplemented()
-	case Infix_Expr:
-		return _eval_infix_expr(ex)
+		value, ok := scope[ex.name]
+		if ok {
+			return _eval_expr(value, scope)
+		} else {
+			panic(fmt.tprintf("Undefined variable: '%s'", ex.name))
+		}
+	case Unary_Expr: unimplemented()
+	case Binary_Expr:
+		llit := _eval_expr(ex.left, scope)
+		rlit := _eval_expr(ex.right, scope)
+		return _eval_binary(ex.op, llit, rlit)
 	}
-	unreachable()
+	return nil
 }
 
-_eval_infix_expr :: proc(be: Infix_Expr) -> Literal {
-	left := _eval_expr(be.left)
-	right := _eval_expr(be.right)
-
-	#partial switch be.op {
+_eval_binary :: proc(op: Operator, left, right: Literal) -> Literal {
+	#partial switch op {
 	case .Add:
-		switch lv in left {
+		#partial switch lv in left {
 		case f32:
 			rv, ok := right.(f32)
-			assert(ok, "left and right value are not of the same type")
+			assert(ok)
 			return Literal(f32(lv + rv))
-		case string:
-			fmt.eprintln("[eval] handle binary expr for string literals")
-			unreachable()
-		}
-
-	case .Sub:
-		switch lv in left {
-		case f32:
-			rv, ok := right.(f32)
-			assert(ok, "left and right value are not of the same type")
-			return Literal(f32(lv - rv))
-		case string:
-			fmt.eprintfln("[eval] undefined operations for strings (op=%v)", be.op)
-			unreachable()
-		}
-
-	case .Multiply:
-		switch lv in left {
-		case f32:
-			rv, ok := right.(f32)
-			assert(ok, "left and right value are not of the same type")
-			return Literal(f32(lv * rv))
-		case string:
-			fmt.eprintfln("[eval] undefined operations for strings (op=%v)", be.op)
-			unreachable()
-		}
-
-	case .Divide:
-		switch lv in left {
-		case f32:
-			rv, ok := right.(f32)
-			assert(ok, "left and right value are not of the same type")
-			if rv == 0.0 {
-				panic("ERROR: div by zero; (a / 0) is not defined")
-			}
-			return Literal(f32(lv / rv))
-		case string:
-			fmt.eprintfln("[eval] undefined operations for strings (op=%v)", be.op)
-			unreachable()
+		case: unimplemented(fmt.tprintf("[eval] handle add op for type of %v", lv))
 		}
 
 	case:
-		fmt.eprintfln("[eval] handle other binary operations (like %v)", be.op)
-		unreachable()
+		unimplemented(fmt.tprintf("[eval] handle op: %v", op))
 	}
-	unreachable()
 }

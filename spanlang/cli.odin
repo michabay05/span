@@ -58,7 +58,9 @@ run_file :: proc(filepath: string) {
     	dump_stmt(stmt)
     }
 
-    eval_program(stmts[:])
+    scope := make(Scope)
+    defer delete(scope)
+    eval_program(stmts[:], &scope)
 }
 
 start_repl :: proc() {
@@ -72,6 +74,8 @@ start_repl :: proc() {
 	defer delete(tokens)
 	stmts: [dynamic]Stmt
 	defer delete(stmts)
+	scope := make(Scope)
+    defer delete(scope)
 	for {
 		fmt.print("> ")
 		if !bufio.scanner_scan(&scanner) {
@@ -93,7 +97,7 @@ start_repl :: proc() {
 			dump_stmt(stmt)
 		}
 
-		eval_program(stmts[:])
+    	eval_program(stmts[:], &scope)
 	}
 }
 

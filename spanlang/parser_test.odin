@@ -72,7 +72,7 @@ make_lit :: proc(literal: any, alloc := context.temp_allocator) -> ^Expr {
 make_binary :: proc(
 	left: ^Expr, op: Operator, right: ^Expr, alloc := context.temp_allocator
 ) -> ^Expr {
-	return new_clone(Expr(Infix_Expr{left=left, op=op, right=right}), alloc)
+	return new_clone(Expr(Binary_Expr{left=left, op=op, right=right}), alloc)
 }
 
 @(private="file")

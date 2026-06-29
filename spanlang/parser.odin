@@ -34,13 +34,13 @@ Expr :: union {
 	Identifier,
 	Literal,
 	Unary_Expr,
-	Infix_Expr,
+	Binary_Expr,
 }
 Unary_Expr :: struct {
 	op:    Operator,
 	right: ^Expr,
 }
-Infix_Expr :: struct {
+Binary_Expr :: struct {
 	op:    Operator,
 	left:  ^Expr,
 	right: ^Expr,
@@ -88,8 +88,7 @@ parse_program :: proc(tokens: []Token, stmts: ^[dynamic]Stmt) -> Parser {
 		assert(ok)
 		#partial switch token.kind {
 		case .Identifier:
-			ident := _consume_token(&p)
-			append(stmts, _parse_ident_stmt(&p, Identifier{ident.literal}))
+			append(stmts, _parse_ident_stmt(&p))
 		case:
 			append(stmts, Stmt(_parse_expr_stmt(&p)))
 		}
@@ -132,7 +131,7 @@ _dump_expr :: proc(expr: ^Expr) {
 		case: unreachable()
 		}
 
-	case Infix_Expr:
+	case Binary_Expr:
 		fmt.print("(")
 		_dump_expr(ex.left)
 
@@ -153,29 +152,34 @@ _dump_expr :: proc(expr: ^Expr) {
 	}
 }
 
-_parse_ident_stmt :: proc(p: ^Parser, ident: Identifier) -> Stmt {
-	token, ok := _peek_token(p)
+_parse_ident_stmt :: proc(p: ^Parser) -> Stmt {
+	// Peek ahead 0 = ident
+	// Peek ahead 1 = (token)
+	token, ok := _peek_token(p, ahead=1)
 	assert(ok)
 
 	#partial switch token.kind {
 	case .Colon:
-		colon := _consume_token(p)
+		ident := Identifier{name = _consume_token(p).literal}
+		_, colon_ok := _expect_consume(p, .Colon)
+		assert(colon_ok)
 		return Stmt(_parse_def_stmt(p, ident))
 	case:
-		fmt.printfln("[TODO] parse this token after an ident: %v", token)
-		unimplemented()
+		fmt.println("[WARN] stmt starts with token but treated as expr stmt")
+		return Stmt(_parse_expr_stmt(p))
 	}
 }
 
 _parse_expr_stmt :: proc(p: ^Parser) -> Expr_Stmt {
 	expr := _parse_expression(p, .Lowest)
 	_, sc_ok := _expect_consume(p, .Semicolon)
+	assert(sc_ok)
 	return Expr_Stmt{expr = expr}
 }
 
-_parse_def_stmt :: proc(p: ^Parser, name: Identifier) -> Def_Stmt {
+_parse_def_stmt :: proc(p: ^Parser, ident: Identifier) -> Def_Stmt {
 	def_stmt := Def_Stmt{
-		ident = name,
+		ident = ident,
 		type = "",
 		expr = nil,
 	}
@@ -261,6 +265,10 @@ _expect_consume :: proc(p: ^Parser, kind: Token_Kind) -> (Token, bool) {
 }
 
 _add_prefix_fns :: proc(p: ^Parser) {
+	p.prefix_fns[.Identifier] = proc(p: ^Parser, alloc := context.allocator) -> ^Expr {
+		return new_clone(Expr(Identifier{name = _consume_token(p).literal}))
+	}
+
 	p.prefix_fns[.Number] = proc(p: ^Parser, alloc := context.allocator) -> ^Expr {
 		num_token := _consume_token(p)
 		val, ok := strconv.parse_f32(num_token.literal)
@@ -306,7 +314,7 @@ _add_infix_fns :: proc(p: ^Parser) {
 		prec := _get_precedence(op_token.kind)
 		right := _parse_expression(p, prec)
 
-		return new_clone(Expr(Infix_Expr{
+		return new_clone(Expr(Binary_Expr{
 			left = left,
 			op = op,
 			right = right
@@ -344,8 +352,8 @@ is_expr_eq :: proc(a, b: Expr) -> bool {
 	switch ex_a in a {
 	case Unary_Expr:
 		unimplemented()
-	case Infix_Expr:
-		be_b, ok := b.(Infix_Expr)
+	case Binary_Expr:
+		be_b, ok := b.(Binary_Expr)
 		if ok do return is_expr_eq(ex_a.left^, be_b.left^) && ex_a.op == be_b.op && is_expr_eq(ex_a.right^, be_b.right^)
 		else do return false
 	case Literal:
